@@ -1,0 +1,68 @@
+<html>
+<head>
+	<title>CloudBoard</title>
+	<script type="text/javascript">
+		if (localStorage.getItem("com.jhartig.cloudboard.authToken")) {	
+			var urlFrame = "http://cloudboard.jhartig.com/?token="+localStorage.getItem("com.jhartig.cloudboard.authToken");
+		}
+		function openLink(url) {
+			chrome.tabs.create({url: url});
+		}
+        function refresh() {
+            document.getElementById("iframe").style.height = "280px";
+            document.getElementById("loading").style.display = "block";            
+            
+            document.getElementById("iframe").src = urlFrame;
+            document.getElementById("container").style.display = "block";
+            document.getElementById("new").style.display = "none";
+        }
+        
+        function openNew() {
+            document.getElementById("container").style.display = "none";
+            document.getElementById("new").style.display = "block";
+            document.getElementById("form-error").style.display = "none";
+        }
+        
+        function uploadText(form) {
+            if (form.text && (form.text.value).length > 0) {
+                chrome.extension.sendRequest({data: form.text.value}, function (response) {
+                    if (response) {
+                        form.text.value = "";
+                        document.getElementById("form-error").style.display = "none";
+                    } else {
+                        document.getElementById("form-error").style.display = "block";
+                    }
+                });
+            }
+        }
+        
+        function loaded() {
+            refresh();
+        }
+        function iframeloaded() {
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("iframe").style.height = "308px";
+        }
+	</script>
+</head>
+<body style="width:300;height:320px;margin:2px 4px;" onload="loaded();">
+	<script type="text/javascript">
+	if (urlFrame) {
+        document.write('<div id="container"><p id="loading" style="height:20px;width:100px;margin-left:auto;margin-right:auto;"><img src="ajax-loader.gif" /></p><iframe width="300" height="280" style="margin-top:12px;" frameborder="0" id="iframe" onload="iframeloaded()"></iframe></div>');
+        document.write('<span style="position:absolute;right:4px;top:2px;font-size:11px;"><a href="#" onclick="refresh();">Refresh</a></span>');
+        document.write('<span style="position:absolute;left:4px;top:2px;font-size:11px;"><a href="#" onclick="openNew();">Paste New</a></span>');
+	} else {
+		document.write('<p>You must get an authToken before using Cloudboard. <a href="options.html" onclick="openLink(\'options.html\');">Options</a></p>');
+	}
+	</script>
+    <div id="new" style="height:308px;width:300px;margin-top:12px; padding-top:8px;display:none;">
+    
+    <form onsubmit="uploadText(this); return false;">
+        <span>Paste Content here</span>
+        <p style="color: red;display:none;" id="form-error">Please try again.</p>
+        <textarea style="height:200px;width:280;margin-left:auto;margin-right:auto;" name="text"></textarea>
+        <input type="submit" value="Submit" />
+    </form>
+    </div>
+</body>
+</html>

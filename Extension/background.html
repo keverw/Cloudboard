@@ -1,0 +1,101 @@
+<html>
+    <script type="text/javascript">
+	function setupContexts() {
+		chrome.contextMenus.create( {
+			"title": "Copy to Cloudboard",
+			"contexts": ["selection"],
+			"onclick": getCopiedData
+		} );
+		chrome.contextMenus.create( {
+			"title": "Copy Link to Cloudboard",
+			"contexts": ["page"],
+			"onclick": getCopiedData
+		} );
+		chrome.contextMenus.create( {
+			"title": "Copy Page to Cloudboard",
+			"contexts": ["page"],
+			"onclick": getCopiedData
+		} );
+		chrome.contextMenus.create( {
+			"title": "Copy Image URL to Cloudboard",
+			"contexts": ["image"],
+			"onclick": getCopiedData
+		} );
+	}
+	
+	function getCopiedData(info, tab) {
+		var data, type;
+		if (info.linkUrl) {
+			console.log("Got link", info.linkUrl);
+			data = info.linkUrl;
+			type = "link";
+		} else if (info.srcUrl) {
+			console.log("Got image", info.srcUrl);
+			data = info.srcUrl;
+			type = "image";
+		} else if (info.selectionText) {
+			console.log("Got text", info.selectionText);
+			data = info.selectionText;
+			type = "text";
+		} else if (info.pageUrl) {
+			console.log("Got page URL", info.pageUrl);
+			data = info.pageUrl;
+			type = "page";
+		}
+		if (data) {
+			sendDataToServer(data, type);
+		}
+	}
+	
+	function sendDataToServer(data, type, callback) {
+	    if (localStorage.getItem("com.jhartig.cloudboard.authToken")) {
+    		var params = data;
+    		var xhr = new XMLHttpRequest();
+    		xhr.onreadystatechange = function (xhr) { handleServerResponse(xhr, callback); };
+    		xhr.open("POST", "http://cloudboard.jhartig.com/?post=1&token="+localStorage.getItem("com.jhartig.cloudboard.authToken"), true);
+    		xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    		xhr.send(params);
+       }
+	}
+	
+	function handleServerResponse(xhr, callback) {
+	    if (!xhr.readyState) {
+	       xhr = xhr.target;
+	    }
+		if (xhr.readyState == 4) {
+			var resp = xhr.responseText;
+            if (resp == "true" || resp == "dup" ) {
+                console.log("shared!");
+                if (callback) {
+                    callback(true);
+                }
+            } else if (resp == "invalid_token") {
+                localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+                openLink("options.html");
+                if (callback) {
+                    callback(false);
+                }
+            }
+		}
+	}
+    
+    chrome.extension.onRequest.addListener(
+        function(request, obj, callback) {
+            sendDataToServer(request.data, "text", callback);
+        }
+    );
+	
+	function openLink(url) {
+		chrome.tabs.create({url: url});
+	}
+	
+	function openOptions() {
+		if (!localStorage.getItem("com.jhartig.cloudboard.authToken") || localStorage.getItem("com.jhartig.cloudboard.authToken") == "invalid_token") {
+			openLink("options.html");
+		}
+	}
+	
+	setupContexts();
+	openOptions();
+    </script>
+</html>

@@ -1,0 +1,35 @@
+<html>
+<head>
+	<title>CloudBoard Settings</title>
+	<script type="text/javascript">
+		function save() {
+			if (document.getElementById('settings').authToken.value && document.getElementById('settings').authToken.value != "") {
+				localStorage.setItem("com.jhartig.cloudboard.authToken", document.getElementById('settings').authToken.value);
+				document.getElementById('message').innerHTML = "<em>Saved!</em>";
+			}
+			return false;
+		}
+		function load() {
+            if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") == "invalid_token") {
+                document.getElementById('instructions_normal').style.display = "none";
+                document.getElementById('instructions_invalid_token').style.display = "block";
+            } else {
+                document.getElementById('settings').authToken.value = localStorage.getItem("com.jhartig.cloudboard.authToken");
+            }
+		}
+	</script>
+</head>
+<body>
+	<h1>Cloudboard</h1>
+	<p id="instructions_normal">You need to get an authentication key from: <a href="http://cloudboard.jhartig.com/" target="_blank">Cloudboard Home</a> before you can use cloudboard.</p>
+	<p id="instructions_invalid_token" style="display:none;">You're token is invalid. Please generate a new one from <a href="http://cloudboard.jhartig.com/" target="_blank">Cloudboard Home</a>!</p>
+    <form onsubmit="save(); return false;" id="settings">
+		<fieldset>
+		<p>Auth Token: <input type="text" name="authToken" /></p>
+		</fieldset>
+		<input type="submit" value="Save Settings" /><span id="message"></span>
+	</form>
+	<!-- load settings into the form -->
+	<script type="text/javascript">load();</script>
+</body>
+</html>

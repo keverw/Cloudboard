@@ -1,0 +1,23 @@
+{
+  "name": "Cloudboard",
+  "version": "0.2.5.2",
+  "description": "A Cloud Clipboard. Share text, urls, pages, images, etc. between machines.",
+  "icons": { "16": "icon16.png",
+			 "48": "icon48.png",
+			 "128": "icon128.png"  
+  },
+  "browser_action": {
+    "default_icon": "icon19.png",
+    "default_title": "Cloudboard",
+    "default_popup": "popup.html"
+  },  
+  "background_page": "background.html",
+  "incognito": "spanning",
+  "options_page": "options.html",
+  "permissions": [
+	"notifications",
+    "idle",
+	"contextMenus",
+	"tabs"
+  ]
+}
