@@ -9,6 +9,7 @@ class db {
     private static $instance;
     private $redis;
     private $keysBackup;
+    private $types;
     
     const USER_ITEM_LIMIT = 10;
     
@@ -31,6 +32,8 @@ class db {
         if (!self::$instance) {
             self::$instance =& $this;
         }
+        
+        $this->types = array('txt'=>1, 'lnk'=>2, 'img'=>3, 'pg'=>4, 'tab'=>5, 'ses'=>6);
         
         $this->keysBackup = array();
         
@@ -160,10 +163,11 @@ class db {
         return false;
     }
     
+    //old
     public function addItem($user, $text) {
         if ($this->redis) {
             try {
-                if ($user && $text && !isset($text[4096])) { //no more than 4096 chars
+                if ($user && $text && !isset($text[8192])) { //no more than 8192 chars
                     $itemID = $this->redis->incr(sprintf(self::ITEM_USER_IDS, $user));
                     if ($itemID) {
                         if ($this->redis->set(sprintf(self::ITEM_KEY, $user, $itemID), (string)$text, self::TIMEOUT_ITEM)) {
@@ -183,6 +187,37 @@ class db {
         return false;
     }
     
+    //new
+    public function addItemEx($user, $text, $type='txt') {
+        if ($this->redis) {
+            try {
+                if ($user && $text && !isset($text[8192])) { //no more than 8192 chars
+                    //determine type id
+                    if (isset($this->types[$type])) {
+                        $typeId = $this->types[$type];
+                    } else {
+                        $typeId = $this->types['txt'];
+                    }
+                    $itemID = $this->redis->incr(sprintf(self::ITEM_USER_IDS, $user));
+                    if ($itemID) {
+                        if ($this->redis->set(sprintf(self::ITEM_KEY, $user, $itemID), (string)$text.":".$typeId, self::TIMEOUT_ITEM)) {
+                            if ($this->getItemKeys($user, true) && 
+                                count($this->keysBackup[$user]) > self::USER_ITEM_LIMIT) {
+                                $this->redis->delete(array_pop($this->keysBackup[$user]));
+                                
+                            }
+                            return $itemID;
+                        }
+                    }
+                }                
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    //old
     public function checkForDup($user, $text) {
         if ($this->redis) {
             try {
@@ -190,6 +225,36 @@ class db {
                 if ($keys) {
                     foreach($keys as $k) {
                         if ($text == (string)$this->redis->get($k)) {
+                            return false;
+                        }
+                    }         
+                }
+                return true;
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    public function checkForDupEx($user, $text, $type="txt") {
+        if ($this->redis) {
+            try {
+                $keys = $this->getItemKeys($user);
+                //determine type id
+                if (isset($this->types[$type])) {
+                    $typeId = $this->types[$type];
+                } else {
+                    $typeId = $this->types['txt'];
+                }
+                if ($keys) {
+                    foreach($keys as $i => $k) {
+                        if ((string)$text.":".$typeId == (string)$this->redis->get($k)) {
+                            //need to make a new one to bring it to the top
+                            if ($i>0) { //make sure we aren't already at the top
+                                $this->redis->delete($k);
+                                $this->addItemEx($user, $text, $type);
+                            }
                             return false;
                         }
                     }         
@@ -217,15 +282,28 @@ class db {
         return false;
     }
     
-    public function getItems($user) {
+    //need to send a newformat param to know if we have part type or not
+    public function getItems($user, $newformat=false) {
         if ($this->redis) {
             try {
                 $items = array();
                 $keys = $this->getItemKeys($user);
-                if ($keys) {                    
+                if ($keys) {
                     foreach($keys as $k) {
-                        $itemParts = explode(":", $k);
-                        $items[$itemParts[2]] = (string)$this->redis->get($k);
+                        $itemParts = explode(":", $k); //get the id                        
+                        if ($newformat) {
+                            $item = (string)$this->redis->get($k);
+                            $itemParts = str_split($item, strripos($item, ":")); //split string at last :
+                            if (isset($itemParts[1])) {
+                                $type = array_search(substr($itemParts[1], 1), $this->types); //remove the :
+                                if (!$type) { $type = "txt"; }
+                            } else {
+                                $type = "txt";
+                            }
+                            $items[$itemParts[2]] = array('text'=>$itemParts[0], 'type'=>'txt');
+                        } else {
+                            $items[$itemParts[2]] = (string)$this->redis->get($k);
+                        }
                     }
                     krsort($items);         
                 }
@@ -235,6 +313,24 @@ class db {
             }
         }
         return false;
+    }
+    
+    public function getUpdatedTime($user) {
+        if ($this->redis) {
+            try {
+                $items = array();
+                $keys = $this->getItemKeys($user);
+                if ($keys) {
+                    $ttl = $this->redis->ttl($keys[0]);
+                    $updatedTime = time()-($ttl - self::TIMEOUT_ITEM);
+                    return $updatedTime;
+                }
+                return time();
+            } catch (Exception $e) {
+                return 0;
+            }
+        }
+        return 0;
     }
     
     //stats

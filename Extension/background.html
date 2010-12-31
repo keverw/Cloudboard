@@ -21,6 +21,11 @@
 			"contexts": ["image"],
 			"onclick": getCopiedData
 		} );
+        chrome.contextMenus.create( {
+			"title": "Paste From Cloudboard",
+			"contexts": ["editable"],
+			"onclick": getCopiedData
+		} );
 	}
 	
 	function getCopiedData(info, tab) {
@@ -28,19 +33,19 @@
 		if (info.linkUrl) {
 			console.log("Got link", info.linkUrl);
 			data = info.linkUrl;
-			type = "link";
+			type = "lnk";
 		} else if (info.srcUrl) {
 			console.log("Got image", info.srcUrl);
 			data = info.srcUrl;
-			type = "image";
+			type = "img";
 		} else if (info.selectionText) {
 			console.log("Got text", info.selectionText);
 			data = info.selectionText;
-			type = "text";
+			type = "txt";
 		} else if (info.pageUrl) {
 			console.log("Got page URL", info.pageUrl);
 			data = info.pageUrl;
-			type = "page";
+			type = "pg";
 		}
 		if (data) {
 			sendDataToServer(data, type);
@@ -48,12 +53,11 @@
 	}
 	
 	function sendDataToServer(data, type, callback) {
-	    if (localStorage.getItem("com.jhartig.cloudboard.authToken")) {
+	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
     		var params = data;
     		var xhr = new XMLHttpRequest();
     		xhr.onreadystatechange = function (xhr) { handleServerResponse(xhr, callback); };
-    		xhr.open("POST", "http://cloudboard.jhartig.com/?post=1&token="+localStorage.getItem("com.jhartig.cloudboard.authToken"), true);
-    		xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    		xhr.open("POST", "http://cloudboard.jhartig.com/post.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
     		xhr.send(params);
        }
 	}
@@ -65,7 +69,6 @@
 		if (xhr.readyState == 4) {
 			var resp = xhr.responseText;
             if (resp == "true" || resp == "dup" ) {
-                console.log("shared!");
                 if (callback) {
                     callback(true);
                 }
@@ -81,7 +84,7 @@
     
     chrome.extension.onRequest.addListener(
         function(request, obj, callback) {
-            sendDataToServer(request.data, "text", callback);
+            sendDataToServer(request.data, (request.type ? request.type : 'txt'), callback);
         }
     );
 	
