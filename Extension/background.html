@@ -58,7 +58,8 @@
     		var xhr = new XMLHttpRequest();
     		xhr.onreadystatechange = function (xhr) { handleServerResponse(xhr, callback); };
     		xhr.open("POST", "http://cloudboard.jhartig.com/post.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
-    		xhr.send(params);
+    		xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded"); //we need this for some reason
+            xhr.send(params);
        }
 	}
 	

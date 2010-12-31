@@ -8,41 +8,38 @@ if (!headers_sent()) {
     header('Access-Control-Allow-Origin: *');
 }
 
-function postInvalidToken() {
-    if (isset($_GET['post'])) {
-        die("invalid_token");
-    } else {
-        die("Invalid Token");
-    }
-}
-
-if (isset($_GET['token'])) {
-    $db = db::instance();
-    $_GET['token'] = str_replace(" ", "+", $_GET['token']);
-    if (($user = $db->authExists($_GET['token'])) !== false) {
-        
-        if (isset($_GET['type'])) {
-            $type = $_GET['type'];
-        } else {
-            $type = "txt";
-        }
-
-        $text = file_get_contents("php://input");
-        if ($db->checkForDupEx($user, $text, $type)) {
-            if ($db->addItemEx($user, $text, $type)) {
-                die("true");
+if ($_SERVER['REQUEST_METHOD'] == "POST") {
+    if (isset($_GET['token'])) {
+        $db = db::instance();
+        $_GET['token'] = str_replace(" ", "+", $_GET['token']);
+        if (($user = $db->authExists($_GET['token'])) !== false) {
+            
+            if (isset($_GET['type'])) {
+                $type = $_GET['type'];
+            } else {
+                $type = "txt";
+            }
+    
+            $text = file_get_contents("php://input");
+            if ($text) {
+                if ($db->checkForDupEx($user, $text, $type)) {
+                    if ($db->addItemEx($user, $text, $type)) {
+                        die("true");
+                    } else {
+                        die("false");
+                    }
+                } else {
+                    die("dup");
+                }
             } else {
                 die("false");
             }
+            
         } else {
-            die("dup");
+            die("invalid_token");
         }
-        
-        
     } else {
-        postInvalidToken();
+        die("invalid_token");
     }
-} else {
-    postInvalidToken();
 }
 ?>

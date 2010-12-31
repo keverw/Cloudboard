@@ -8,29 +8,23 @@ if (!headers_sent()) {
     header('Access-Control-Allow-Origin: *');
 }
 
-function postInvalidToken() {
-    if (isset($_GET['post'])) {
-        die("invalid_token");
-    } else {
-        die("Invalid Token");
-    }
-}
-
 if (isset($_GET['token'])) {
     $db = db::instance();
     $_GET['token'] = str_replace(" ", "+", $_GET['token']);
     if (($user = $db->authExists($_GET['token'])) !== false) {
         if (isset($_GET['callback'])) {
             header("Content-type: application/javascript; charset=utf-8");
-            die($_GET['callback'] . "(" . $db->getUpdatedTime($user) . ")");
+            $time = $_GET['callback'] . "(" . $db->getUpdatedTime($user) . ")";            
         } else {
-            die($db->getUpdatedTime($user));
+            $time = $db->getUpdatedTime($user);
         }
+        echo $time;
+        exit(0);
         
     } else {
-        postInvalidToken();
+        die("invalid_token");
     }
 } else {
-    postInvalidToken();
+    die("invalid_token");
 }
 ?>

@@ -2,23 +2,34 @@
 <head>
 	<title>CloudBoard</title>
 	<script type="text/javascript">
-		
+		var showingCache = false;
 		function openLink(url) {
 			chrome.tabs.create({url: url});
 		}
-        function refresh() {
-            document.getElementById("new").style.display = "none";  
-            document.getElementById("container").style.display = "block";
-            document.getElementById("inbox").style.display = "none";
-            document.getElementById("loading").style.display = "block";
-            
-            getIfUpdated(function(update) {
-                if (!update && localStorage.getItem("com.jhartig.cloudboard.inboxCache") != null) {
-                    displayInbox(localStorage.getItem("com.jhartig.cloudboard.inboxCache"));
-                } else {
-                    getInboxFromServer(displayInbox);
-                }
-            });
+        function refresh(force) {
+            if (force) {
+                document.getElementById("new").style.display = "none";  
+                document.getElementById("container").style.display = "block";
+                document.getElementById("inbox").style.display = "none";
+                document.getElementById("loading").style.display = "block";
+                getInboxFromServer(displayInbox);
+            } else {
+                getIfUpdated(function(update) {
+                    if (!update && localStorage.getItem("com.jhartig.cloudboard.inboxCache") != null) {
+                        if (!showingCache) { //if this is true then we don't need to update
+                            displayInbox(localStorage.getItem("com.jhartig.cloudboard.inboxCache"));
+                            showingCache = true;
+                        }
+                    } else {
+                        document.getElementById("new").style.display = "none";  
+                        document.getElementById("container").style.display = "block";
+                        document.getElementById("inbox").style.display = "none";
+                        document.getElementById("loading").style.display = "block";
+                        getInboxFromServer(displayInbox);
+                        showingCache = true;
+                    }
+                });
+            }
         }
         
         function displayInbox(json) {
@@ -38,34 +49,9 @@
             		xhr.open("GET", "http://cloudboard.jhartig.com/lastUpdate.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
             		xhr.send();
                 } else {
+                    console.error("wtf");
                     callback(true);
                 }
-           } else {
-                document.getElementById("container").style.display = "none";
-                document.getElementById("fail").style.display = "block";
-           }
-    	}
-	
-    	function handleIfUpdatedResponse(xhr, callback) {
-    	    if (!xhr.readyState) {
-    	       xhr = xhr.target;
-    	    }
-    		if (xhr.readyState == 4) {
-    			var resp = parseInt(xhr.responseText);
-                if (resp > localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {
-                    callback(true);
-                } else {
-                    callback(false);
-                }
-    		}
-    	}
-        
-        function getInboxFromServer(callback) {
-    	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
-                var xhr = new XMLHttpRequest();
-        		xhr.onreadystatechange = function (xhr) { handleIfUpdatedResponse(xhr, callback); };
-        		xhr.open("GET", "http://cloudboard.jhartig.com/inbox.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
-        		xhr.send();
            } else {
                 document.getElementById("container").style.display = "none";
                 document.getElementById("fail").style.display = "block";
@@ -78,9 +64,48 @@
     	    }
     		if (xhr.readyState == 4) {
     			var resp = xhr.responseText;
-                localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
-                localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
-                callback(resp);
+                if (resp == "invalid_token") {
+                    localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+                    document.getElementById("container").style.display = "none";
+                    document.getElementById("fail").style.display = "block";
+                } else {
+                    var time = parseInt(resp);
+                    if (!time || time > localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {
+                        callback(true);
+                    } else {
+                        callback(false);
+                    }
+                }
+    		}
+    	}
+        
+        function getInboxFromServer(callback) {
+    	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
+                var xhr = new XMLHttpRequest();
+        		xhr.onreadystatechange = function (xhr) { handleInboxResponse(xhr, callback); };
+        		xhr.open("GET", "http://cloudboard.jhartig.com/inbox.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+        		xhr.send();
+           } else {
+                document.getElementById("container").style.display = "none";
+                document.getElementById("fail").style.display = "block";
+           }
+    	}
+	
+    	function handleInboxResponse(xhr, callback) {
+    	    if (!xhr.readyState) {
+    	       xhr = xhr.target;
+    	    }
+    		if (xhr.readyState == 4) {
+    			var resp = xhr.responseText;
+                if (resp == "invalid_token") {
+                    localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+                    document.getElementById("container").style.display = "none";
+                    document.getElementById("fail").style.display = "block";
+                } else {
+                    localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
+                    localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
+                    callback(resp);
+                }
     		}
     	}
         
@@ -132,12 +157,12 @@
     <div id="fail" style="display:none;">
         <p>You must get an authToken before using Cloudboard. <a href="options.html" onclick="openLink('options.html');">Options</a></p>
     </div>
-    <div id="container">
-        <span style="position:absolute;right:4px;top:2px;font-size:11px;"><a href="#" onclick="refresh();">Refresh</a></span>
+    <div id="container" style="height:320px;">
+        <span style="position:absolute;right:4px;top:2px;font-size:11px;"><a href="#" onclick="refresh(true);">Refresh</a></span>
         <span style="position:absolute;left:4px;top:2px;font-size:11px;"><a href="#" onclick="openNew();">Paste New</a></span>
         
-        <div id="loading"><p style="height:20px;width:100px;margin-left:auto;margin-right:auto;"><img src="ajax-loader.gif" /></p></dir>
-        <div id="inbox" style="display:none;">
+        <div id="loading"><p style="height:20px;width:100px;margin-left:auto;margin-right:auto;"><img src="ajax-loader.gif" /></p></div>
+        <div id="inbox" style="display:none; height:300px; margin-top: 28px;">
         
         </div>
     </div>

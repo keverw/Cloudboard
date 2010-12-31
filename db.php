@@ -272,7 +272,7 @@ class db {
             try {
                 if (!isset($this->keysBackup[$user]) || $force) {
                     $this->keysBackup[$user] = $this->redis->getKeys(sprintf(self::ITEM_SEARCH_KEY, $user));
-                    arsort($this->keysBackup[$user]);
+                    rsort($this->keysBackup[$user]);
                 }
                 return $this->keysBackup[$user];
             } catch (Exception $e) {
@@ -293,19 +293,19 @@ class db {
                         $itemParts = explode(":", $k); //get the id                        
                         if ($newformat) {
                             $item = (string)$this->redis->get($k);
-                            $itemParts = str_split($item, strripos($item, ":")); //split string at last :
-                            if (isset($itemParts[1])) {
-                                $type = array_search(substr($itemParts[1], 1), $this->types); //remove the :
+                            if (($split = strripos($item, ":")) > 0 && strlen($item)-$split<=3) { $itemTextParts = str_split($item, $split); } else { $itemTextParts = array($item); } //split string at last :
+                            if (isset($itemTextParts[1])) {
+                                $type = array_search(substr($itemTextParts[1], 1), $this->types); //remove the :
                                 if (!$type) { $type = "txt"; }
                             } else {
                                 $type = "txt";
                             }
-                            $items[$itemParts[2]] = array('text'=>$itemParts[0], 'type'=>'txt');
+                            $items[] = array('text'=>$itemTextParts[0], 'type'=>'txt', 'id'=>$itemParts[2]);
                         } else {
-                            $items[$itemParts[2]] = (string)$this->redis->get($k);
+                            $items[] = (string)$this->redis->get($k);
                         }
                     }
-                    krsort($items);         
+                    //krsort($items);         
                 }
                 return $items;
             } catch (Exception $e) {
@@ -322,7 +322,7 @@ class db {
                 $keys = $this->getItemKeys($user);
                 if ($keys) {
                     $ttl = $this->redis->ttl($keys[0]);
-                    $updatedTime = time()-($ttl - self::TIMEOUT_ITEM);
+                    $updatedTime = time()-(self::TIMEOUT_ITEM - $ttl);
                     return $updatedTime;
                 }
                 return time();
