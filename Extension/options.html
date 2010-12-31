@@ -3,10 +3,22 @@
 	<title>CloudBoard Settings</title>
 	<script type="text/javascript">
 		function save() {
+		    var failed = false;
 			if (document.getElementById('settings').authToken.value && document.getElementById('settings').authToken.value != "") {
 				localStorage.setItem("com.jhartig.cloudboard.authToken", document.getElementById('settings').authToken.value);
-				document.getElementById('message').innerHTML = "<em>Saved!</em>";
+			} else {
+			    failed = true;
 			}
+            if (document.getElementById('settings').notifications.checked) {
+				localStorage.setItem("com.jhartig.cloudboard.notifications", 1);
+			} else {
+			    localStorage.setItem("com.jhartig.cloudboard.notifications", 0);
+			}
+            if (failed) {
+                document.getElementById('message').innerHTML = "<em>You must enter a token!</em>";
+            } else {
+            document.getElementById('message').innerHTML = "<em>Saved!</em>";
+            }
 			return false;
 		}
 		function load() {
@@ -15,6 +27,9 @@
                 document.getElementById('instructions_invalid_token').style.display = "block";
             } else {
                 document.getElementById('settings').authToken.value = localStorage.getItem("com.jhartig.cloudboard.authToken");
+            }
+            if (localStorage.getItem("com.jhartig.cloudboard.notifications") == 1) {
+                document.getElementById('settings').notifications.checked = true;
             }
 		}
 	</script>
@@ -26,6 +41,7 @@
     <form onsubmit="save(); return false;" id="settings">
 		<fieldset>
 		<p>Auth Token: <input type="text" name="authToken" /></p>
+        <p>Notifications <input type="checkbox" name="notifications" /><em>Long polling restarted every 5 minutes. If you're computer has been idle for 10 minutes, it will stop until active again.</em></p>
 		</fieldset>
 		<input type="submit" value="Save Settings" /><span id="message"></span>
 	</form>

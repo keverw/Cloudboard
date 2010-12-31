@@ -24,7 +24,7 @@ if (isset($_GET['token'])) {
     $_GET['token'] = str_replace(" ", "+", $_GET['token']);
     if (($user = $db->authExists($_GET['token'])) !== false) {
         
-        function gotItem($item) {
+        function gotItem($item, $db, $user) {
             if (isset($_GET['callback'])) {
                 header("Content-type: application/javascript; charset=utf-8");
                 $output = $_GET['callback'] . "(" . json_encode($item) . ")";
@@ -33,7 +33,7 @@ if (isset($_GET['token'])) {
                 $output = json_encode($item);
             }
             echo $output;
-            $db->unsubscribe($user); //run this last, we don't know what it will do
+            //$db->unsubscribe($user); //run this last, we don't know what it will do
             exit(0);
         }
         $db->subscribe($user, 'gotItem');        

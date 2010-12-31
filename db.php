@@ -344,7 +344,7 @@ class db {
             $itemParts = explode("=", $msg, 2);
             if ($itemParts) {
                 $item = $this->parseItem($itemParts[1], $itemParts[0]);            
-                $this->callbacks[$user]($item);
+                $this->callbacks[$user]($item, $this, $user);
             }
         }
     }

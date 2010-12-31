@@ -73,6 +73,8 @@
             getInboxFromServer(callback);
         }
     }
+    
+    var lastPaste = null;
 	
 	function sendDataToServer(data, type, callback) {
 	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
@@ -82,6 +84,7 @@
     		xhr.open("POST", "http://cloudboard.jhartig.com/post.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
     		xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded"); //we need this for some reason
             xhr.send(params);
+            lastPaste = data;
        }
 	}
 	
@@ -109,15 +112,61 @@
 		}
 	}
     
+    function checkConnectionStatus() {
+        if (openConnection) {
+            aborted = true; //tell us not to restart connection on error
+            openConnection.abort();
+            console.error("connection aborted after time limit");
+            openConnection = false;
+            openServerConnection(); //reopen            
+        }
+    }
+    
+    var disconnectedOnIdle = false;
+    var aborted = false;
+    
+    function checkIdleState() {
+        chrome.idle.queryState(600, function (state) {
+           if ((state == "idle" || state == "locked") && openConnection) {
+               clearTimeout(timeout);
+               aborted = true; //tell us not to restart connection on error
+               openConnection.abort();
+               openConnection = false;               
+               console.error("connection aborted because computer is idle");
+               disconnectedOnIdle = true;
+           } else if (state == "active" && disconnectedOnIdle && !openConnection) { //they are back
+               console.log("connection reopened after not idle");
+               openServerConnection();
+               disconnectedOnIdle = false;
+           }
+        });
+        //see if they changed the notification setting
+        if (openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 0) {
+            clearTimeout(timeout);
+            aborted = true; //tell us not to restart connection on error
+            openConnection.abort();
+            openConnection = false;
+            console.error("connection aborted because changed setting");
+        } else if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1 && !aborted) {
+            console.log("changed notification setting");
+            openServerConnection();            
+        }
+    }
+    
     var openConnection = false;
+    var timeout = false;
 
     function openServerConnection() {
-        if (!openConnection) {
+        if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1) {
+            console.log("opening connection");
+            aborted = false;
             if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
         		openConnection = new XMLHttpRequest();
         		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
         		openConnection.open("GET", "http://cloudboard.jhartig.com/listen.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
                 openConnection.send();
+                if (timeout) { clearTimeout(timeout); }
+                timeout = setTimeout(checkConnectionStatus, 300000); //close connection after 5 minutes (300000)
            }
        }
     }
@@ -132,9 +181,47 @@
             if (xhr.responseText == "invalid_token") {
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
             } else if (xhr.status == 200) {
-                console.log(resp);
+                console.log("got resp", resp);
+                try {
+                    resp = JSON.parse(resp);
+                } catch (e) {}
+                if (resp && resp.text && localStorage.getItem("com.jhartig.cloudboard.inboxCache")) {
+                    var inboxCache = localStorage.getItem("com.jhartig.cloudboard.inboxCache");
+                    try {
+                        inboxCache = JSON.parse(inboxCache);
+                    } catch (e) {
+                        getInboxFromServer(function (inbox) {
+                            if (inbox && inbox[0]) {
+                                if (inbox[0].text != lastPaste) {
+                                    var notification = webkitNotifications.createNotification(
+                                      'icon48.png',
+                                      'New Cloudboard Paste',
+                                      inbox[0].text
+                                    );
+                                    notification.show();
+                                }
+                            }
+                        });
+                    }
+                    inboxCache.unshift(resp); //add the new item
+                    if (inboxCache.length > 10) {
+                        inboxCache.pop();
+                    }
+                    localStorage.setItem("com.jhartig.cloudboard.inboxCache", JSON.stringify(inboxCache));
+                    localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
+                    if (resp.text != lastPaste) {
+                        var notification = webkitNotifications.createNotification(
+                          'icon48.png',
+                          'New Cloudboard Paste',
+                          resp.text
+                        );
+                        notification.show();
+                    }         
+                }
+                clearTimeout(timeout);
                 openServerConnection();
-            } else {
+            } else if (!aborted) {
+                clearTimeout(timeout);
                 setTimeout(openServerConnection, 2000); //resume in 2 seconds because we got an error, even though this is probably ok
                 console.error("received error: ", xhr.responseText);
             }
@@ -219,14 +306,18 @@
 			var resp = xhr.responseText;
             if (resp == "invalid_token") {
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
-                callback("invalid_token");
+                if (callback) {
+                    callback("invalid_token");
+                }
             } else {
                 localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
                 localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
                 try {
                     resp = JSON.parse(resp);
                 } catch (e) {}
-                callback(resp);
+                if (callback) {
+                    callback(resp);
+                }
             }
 		}
 	}
@@ -242,6 +333,13 @@
 	setupContexts();
 	openOptions();
     
-    openServerConnection();
+    getInboxFromServer(); //start off with a new inbox
+    if (localStorage.getItem("com.jhartig.cloudboard.notifications") == null) {
+        localStorage.setItem("com.jhartig.cloudboard.notifications", 1); //new users
+    }
+    if (localStorage.getItem("com.jhartig.cloudboard.notifications") != 0) {
+        openServerConnection();
+        setInterval(checkIdleState, 5000);
+    }
     </script>
 </html>
