@@ -14,6 +14,7 @@ class db {
     const USER_ITEM_LIMIT = 10;
     
     const TIMEOUT_ITEM = 36000; //10 hours
+    const PUBLISH_CHAN = "pu-%u"; //userid
     const ITEM_KEY = "i:%u:%u"; //userid then itemid
     const ITEM_KEY_USER_ONLY = "i:%u"; //userid only, used for sscanf
     const ITEM_SEARCH_KEY = "i:%u:*";
@@ -205,8 +206,8 @@ class db {
                             if ($this->getItemKeys($user, true) && 
                                 count($this->keysBackup[$user]) > self::USER_ITEM_LIMIT) {
                                 $this->redis->delete(array_pop($this->keysBackup[$user]));
-                                
                             }
+                            $this->redis->publish(sprintf(self::PUBLISH_CHAN, $user), $itemID."=".(string)$text.":".$typeId);
                             return $itemID;
                         }
                     }
@@ -310,14 +311,7 @@ class db {
                         $itemParts = explode(":", $k); //get the id                        
                         if ($newformat) {
                             $item = (string)$this->redis->get($k);
-                            if (($split = strripos($item, ":")) > 0 && strlen($item)-$split<=3) { $itemTextParts = str_split($item, $split); } else { $itemTextParts = array($item); } //split string at last :
-                            if (isset($itemTextParts[1])) {
-                                $type = array_search(substr($itemTextParts[1], 1), $this->types); //remove the :
-                                if (!$type) { $type = "txt"; }
-                            } else {
-                                $type = "txt";
-                            }
-                            $items[] = array('text'=>$itemTextParts[0], 'type'=>$type, 'id'=>$itemParts[2]);
+                            $items[] = $this->parseItem($item, $itemParts[2]);
                         } else {
                             $items[] = (string)$this->redis->get($k);
                         }
@@ -325,6 +319,53 @@ class db {
                     //krsort($items);         
                 }
                 return $items;
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    private function parseItem($item, $id) {
+        if (($split = strripos($item, ":")) > 0 && strlen($item)-$split<=3) { $itemTextParts = str_split($item, $split); } else { $itemTextParts = array($item); } //split string at last :
+        if (isset($itemTextParts[1])) {
+            $type = array_search(substr($itemTextParts[1], 1), $this->types); //remove the :
+            if (!$type) { $type = "txt"; }
+        } else {
+            $type = "txt";
+        }
+        return array('text'=>$itemTextParts[0], 'type'=>$type, 'id'=>$id);
+    }
+    
+    public function gotPublish($redis, $chan, $msg) {
+        list($user) = sscanf($chan, self::PUBLISH_CHAN);
+        if ($user && $this->callbacks[$user]) {
+            
+            $itemParts = explode("=", $msg, 2);
+            if ($itemParts) {
+                $item = $this->parseItem($itemParts[1], $itemParts[0]);            
+                $this->callbacks[$user]($item);
+            }
+        }
+    }
+    
+    public function subscribe($user, $function) {
+        if ($this->redis) {
+            try {
+                $this->callbacks[$user] = $function;
+                $this->redis->subscribe(array(sprintf(self::PUBLISH_CHAN, $user)), array($this, 'gotPublish'));
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    public function unsubscribe($user) {
+        if ($this->redis) {
+            try {
+                $this->callbacks[$user] = false;
+                $this->redis->unsubscribe(array(sprintf(self::PUBLISH_CHAN, $user)));
             } catch (Exception $e) {
                 return false;
             }

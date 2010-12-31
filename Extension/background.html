@@ -109,6 +109,38 @@
 		}
 	}
     
+    var openConnection = false;
+
+    function openServerConnection() {
+        if (!openConnection) {
+            if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
+        		openConnection = new XMLHttpRequest();
+        		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
+        		openConnection.open("GET", "http://cloudboard.jhartig.com/listen.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+                openConnection.send();
+           }
+       }
+    }
+    
+    function handleListenResponse(xhr) {
+        if (!xhr.readyState) {
+	       xhr = xhr.target;            
+        }
+		if (xhr.readyState == 4) {
+			var resp = xhr.responseText;
+            openConnection = false;
+            if (xhr.responseText == "invalid_token") {
+                localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+            } else if (xhr.status == 200) {
+                console.log(resp);
+                openServerConnection();
+            } else {
+                setTimeout(openServerConnection, 2000); //resume in 2 seconds because we got an error, even though this is probably ok
+                console.error("received error: ", xhr.responseText);
+            }
+		}
+	}
+    
     chrome.extension.onRequest.addListener(
         function(request, obj, callback) {
             if (request == "ifUpdated") {
@@ -137,7 +169,7 @@
     	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
                 if (localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {                
                     var xhr = new XMLHttpRequest();
-            		xhr.onreadystatechange = function (xhr) { handleIfUpdatedResponse(xhr, callback); };
+            		xhr.onreadystatechange = function (xhrr) { handleIfUpdatedResponse(xhrr, callback); };
             		xhr.open("GET", "http://cloudboard.jhartig.com/lastUpdate.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
             		xhr.send();
                 } else {
@@ -209,5 +241,7 @@
 	
 	setupContexts();
 	openOptions();
+    
+    openServerConnection();
     </script>
 </html>
