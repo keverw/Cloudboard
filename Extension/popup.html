@@ -16,14 +16,16 @@
             } else {
                 getIfUpdated(function(update) {
                     if (!update && localStorage.getItem("com.jhartig.cloudboard.inboxCache") != null) {
+                        document.getElementById("loading").style.display = "none";
                         if (!showingCache) { //if this is true then we don't need to update
-                            displayInbox(localStorage.getItem("com.jhartig.cloudboard.inboxCache"));
+                            getInboxFromCache(displayInbox);
                             showingCache = true;
                         }
                     } else {
                         document.getElementById("new").style.display = "none";  
                         document.getElementById("container").style.display = "block";
                         document.getElementById("inbox").style.display = "none";
+                        document.getElementById("inboxContent").innerHTML = "";
                         document.getElementById("loading").style.display = "block";
                         getInboxFromServer(displayInbox);
                         showingCache = true;
@@ -33,86 +35,74 @@
         }
         
         function displayInbox(json) {
-            
-            document.getElementById("inbox").innerHTML = json;
+            if (json) {
+                var html = "<ul>";
+                for(var i in json) {
+                    switch(json[i].type) {
+                        case "lnk":
+                        case "img":
+                        case "pg":
+                            html += '<li><a href="'+json[i].text+'" onclick="openLink(this.href);return false;"><img src="openLink.png" /></a><textarea class="link" onclick="this.focus();fitContent(this,180);this.select();" onblur="fitContent(this,14);" rows="1" readonly="readonly";>'+json[i].text+'</textarea></li>';
+                        break
+                        default:
+                            html += '<li><textarea onclick="this.focus();fitContent(this,180);this.select();" onblur="fitContent(this,60);" rows="1" readonly="readonly";>'+json[i].text+'</textarea></li>';
+                        break
+                    }
+                }
+                document.getElementById("inboxContent").innerHTML = html+"</ul>"; 
+            }
             
             document.getElementById("loading").style.display = "none";
             document.getElementById("inbox").style.display = "block";
+            
+            var textboxes = document.getElementById("inboxContent").getElementsByTagName("textarea");
+            for (var i in textboxes) {
+                if (textboxes[i].className == "link") {
+                    fitContent(textboxes[i],14);
+                } else {
+                    fitContent(textboxes[i],60);
+                }
+            }
+            
+            if (document.getElementById("container").scrollHeight > 200) {
+                document.body.style.height = document.getElementById("container").style.height = document.getElementById("container").scrollHeight+20;
+            }
+            
         }
         
         function getIfUpdated(callback) {
-    	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
-        		
-                if (localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {                
-                    var xhr = new XMLHttpRequest();
-            		xhr.onreadystatechange = function (xhr) { handleIfUpdatedResponse(xhr, callback); };
-            		xhr.open("GET", "http://cloudboard.jhartig.com/lastUpdate.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
-            		xhr.send();
-                } else {
-                    console.error("wtf");
-                    callback(true);
-                }
-           } else {
-                document.getElementById("container").style.display = "none";
-                document.getElementById("fail").style.display = "block";
-           }
-    	}
-	
-    	function handleIfUpdatedResponse(xhr, callback) {
-    	    if (!xhr.readyState) {
-    	       xhr = xhr.target;
-    	    }
-    		if (xhr.readyState == 4) {
-    			var resp = xhr.responseText;
-                if (resp == "invalid_token") {
-                    localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+            chrome.extension.sendRequest("ifUpdated", function (response) {
+                if (response == "invalid_token") {
                     document.getElementById("container").style.display = "none";
                     document.getElementById("fail").style.display = "block";
                 } else {
-                    var time = parseInt(resp);
-                    if (!time || time > localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {
-                        callback(true);
-                    } else {
-                        callback(false);
-                    }
+                    callback(response);
                 }
-    		}
-    	}
+            });
+        }
         
         function getInboxFromServer(callback) {
-    	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
-                var xhr = new XMLHttpRequest();
-        		xhr.onreadystatechange = function (xhr) { handleInboxResponse(xhr, callback); };
-        		xhr.open("GET", "http://cloudboard.jhartig.com/inbox.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
-        		xhr.send();
-           } else {
-                document.getElementById("container").style.display = "none";
-                document.getElementById("fail").style.display = "block";
-           }
-    	}
-	
-    	function handleInboxResponse(xhr, callback) {
-    	    if (!xhr.readyState) {
-    	       xhr = xhr.target;
-    	    }
-    		if (xhr.readyState == 4) {
-    			var resp = xhr.responseText;
-                if (resp == "invalid_token") {
-                    localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+            chrome.extension.sendRequest("getInbox", function (response) {
+                if (response == "invalid_token") {
                     document.getElementById("container").style.display = "none";
                     document.getElementById("fail").style.display = "block";
                 } else {
-                    localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
-                    localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
-                    callback(resp);
+                    callback(response);
                 }
-    		}
-    	}
+            });
+        }
+        
+        function getInboxFromCache(callback) {
+            chrome.extension.sendRequest("getCacheInbox", function (response) {
+                    callback(response);
+            });
+        }        
         
         function openNew() {
-            document.getElementById("container").style.display = "none";
+            document.getElementById("inbox").style.display = "none";
             document.getElementById("new").style.display = "block";
             document.getElementById("form-error").style.display = "none";
+            document.getElementById("uploadText").focus();
         }
         
         function uploadText(form) {
@@ -128,51 +118,152 @@
             }
         }
         
-        function loaded() {
-            
+        function loaded() {            
             if (!localStorage.getItem("com.jhartig.cloudboard.authToken") || localStorage.getItem("com.jhartig.cloudboard.authToken") == "invalid_token") {
                 document.getElementById("container").style.display = "none";
                 document.getElementById("fail").style.display = "block";
-    			//var urlFrame = "http://cloudboard.jhartig.com/inbox.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1";
     		} else {
                 refresh();
             }
         }
-        function iframeloaded() {
-            document.getElementById("loading").style.display = "none";
-            document.getElementById("iframe").style.height = "308px";
-        }
-        
+                
         function fitContent(id, maxHeight) {
-           var text = id && id.style ? id : document.getElementById(id);
-           if (!text) return;
-           text.style.height = "14px";
-           var adjustedHeight = text.scrollHeight;
-           if (maxHeight) adjustedHeight = Math.min(maxHeight, adjustedHeight);
-           text.style.height = adjustedHeight + "px";
+            var text = id && id.style ? id : document.getElementById(id);
+            if (!text) return;
+            text.style.height = "14px";
+            var adjustedHeight = text.scrollHeight;
+            if (maxHeight) adjustedHeight = Math.min(maxHeight, adjustedHeight);
+            text.style.height = adjustedHeight + "px";
+            if (text.className == "link") {
+                if (adjustedHeight > 14) {
+                    if (text.parentNode.getElementsByTagName("a")[0]) {
+                        text.parentNode.getElementsByTagName("a")[0].style.bottom = (adjustedHeight-12)+"px";
+                    }
+                } else {
+                    if (text.parentNode.getElementsByTagName("a")[0]) {
+                        text.parentNode.getElementsByTagName("a")[0].style.bottom = "2px";
+                    }
+                }
+            }
         }
 	</script>
+    <style type="text/css">
+        * {
+            margin:0;
+            padding:0;
+        }
+        
+        body {
+            width:300px;
+            height:320px;
+            margin:2px 4px;
+        }
+        
+        #fail {
+            display:none;
+        }
+        
+        #container {
+            height:200px;
+            width: 300px;
+            overflow-x: hidden;
+        }
+        
+        #container span {
+            position:absolute;
+            font-size:11px;
+        }
+        
+        #loading {
+            height:20px;
+            width:100px;
+            position: absolute;
+            top: 26px;
+            left: 146px;
+        }
+        
+        #inbox {
+            height:300px;
+            margin-top: 6px;
+        }
+        
+        #inbox p.pastes {
+            width:100px;
+            text-align:center;
+            font-weight:bold;
+            margin:2px auto;
+        }
+        
+        #inboxContent ul li {
+            font-size:11px;
+            margin-bottom: 5px;
+            border-bottom: black solid 1px;
+            width:300px;
+            text-align: left;
+            overflow-x: hidden; 
+        }
+        
+        #inboxContent li textarea {
+            font-size:11px;
+            resize:none;
+            border:none;
+            padding:0;
+            width: 298px;
+            margin:0;
+            overflow:hidden;
+        }
+        
+        #inboxContent li textarea.link {
+            width: 286px;
+        }
+        
+        #inboxContent li a {
+            font-size:10px;
+            position: relative;
+            bottom:2px;
+            padding-right:4px;
+        }
+        
+        #new {
+            height:308px;
+            width:300px;
+            margin-top:12px;
+            padding-top:8px;
+            display:none;
+        }
+        
+        textarea.pasteNew {
+            height:200px;
+            width:280px;
+            margin-left:auto;
+            margin-right:auto;
+        }
+        
+    </style>
 </head>
-<body style="width:300;height:320px;margin:2px 4px;" onload="loaded();">
-    <div id="fail" style="display:none;">
+<body onload="loaded();">
+    <div id="fail">
         <p>You must get an authToken before using Cloudboard. <a href="options.html" onclick="openLink('options.html');">Options</a></p>
     </div>
-    <div id="container" style="height:320px;">
-        <span style="position:absolute;right:4px;top:2px;font-size:11px;"><a href="#" onclick="refresh(true);">Refresh</a></span>
-        <span style="position:absolute;left:4px;top:2px;font-size:11px;"><a href="#" onclick="openNew();">Paste New</a></span>
+    <div id="container" style="">
+        <span style="right:4px;top:2px;"><a href="#" onclick="refresh(true);">Refresh</a></span>
+        <span style="left:4px;top:2px;"><a href="#" onclick="openNew();">Paste New</a></span>
         
-        <div id="loading"><p style="height:20px;width:100px;margin-left:auto;margin-right:auto;"><img src="ajax-loader.gif" /></p></div>
-        <div id="inbox" style="display:none; height:300px; margin-top: 28px;">
-        
+        <div id="loading"><img src="ajax-loader.gif" /></div>
+        <div id="inbox">
+            <p class="pastes">Pastes</p>
+            <div id="inboxContent">
+            </div>
+        </div>
+        <div id="new">    
+            <form onsubmit="uploadText(this); return false;">
+                <span>Paste Content here</span>
+                <p style="color: red;display:none;" id="form-error">Please try again.</p>
+                <textarea class="pasteNew" name="text" id="uploadText"></textarea>
+                <input type="submit" value="Submit" />
+            </form>
         </div>
     </div>
-    <div id="new" style="height:308px;width:300px;margin-top:12px; padding-top:8px;display:none;">    
-        <form onsubmit="uploadText(this); return false;">
-            <span>Paste Content here</span>
-            <p style="color: red;display:none;" id="form-error">Please try again.</p>
-            <textarea style="height:200px;width:280;margin-left:auto;margin-right:auto;" name="text"></textarea>
-            <input type="submit" value="Submit" />
-        </form>
-    </div>
+    
 </body>
 </html>

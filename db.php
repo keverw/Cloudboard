@@ -15,6 +15,7 @@ class db {
     
     const TIMEOUT_ITEM = 36000; //10 hours
     const ITEM_KEY = "i:%u:%u"; //userid then itemid
+    const ITEM_KEY_USER_ONLY = "i:%u"; //userid only, used for sscanf
     const ITEM_SEARCH_KEY = "i:%u:*";
     const ITEM_STATS_KEY = "i:%s:*"; //the middle %s will be replaced with *
     const ITEM_USER_IDS = "u:%u:ids";
@@ -271,8 +272,23 @@ class db {
         if ($this->redis) {
             try {
                 if (!isset($this->keysBackup[$user]) || $force) {
-                    $this->keysBackup[$user] = $this->redis->getKeys(sprintf(self::ITEM_SEARCH_KEY, $user));
-                    rsort($this->keysBackup[$user]);
+                    $keys = $this->redis->getKeys(sprintf(self::ITEM_SEARCH_KEY, $user));
+                    if ($keys) {
+                        //because we have stupid strings, i:1:100 is not larger than i:1:99
+                        $ids = array();
+                        foreach($keys as $key) {
+                            list($id) = sscanf($key, sprintf(self::ITEM_KEY_USER_ONLY, $user).":%u");
+                            $ids[] = $id;
+                        }
+                        rsort($ids);
+                        $this->keysBackup[$user] = array();
+                        //now reconstruct the array
+                        foreach($ids as $id) {
+                            $this->keysBackup[$user][] = sprintf(self::ITEM_KEY, $user, $id);
+                        }
+                    } else {
+                        $this->keysBackup[$user] = false;
+                    }
                 }
                 return $this->keysBackup[$user];
             } catch (Exception $e) {
@@ -283,6 +299,7 @@ class db {
     }
     
     //need to send a newformat param to know if we have part type or not
+    //should've done getItemsEx...
     public function getItems($user, $newformat=false) {
         if ($this->redis) {
             try {
@@ -300,7 +317,7 @@ class db {
                             } else {
                                 $type = "txt";
                             }
-                            $items[] = array('text'=>$itemTextParts[0], 'type'=>'txt', 'id'=>$itemParts[2]);
+                            $items[] = array('text'=>$itemTextParts[0], 'type'=>$type, 'id'=>$itemParts[2]);
                         } else {
                             $items[] = (string)$this->redis->get($k);
                         }

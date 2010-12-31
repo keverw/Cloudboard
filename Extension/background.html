@@ -24,7 +24,7 @@
         chrome.contextMenus.create( {
 			"title": "Paste From Cloudboard",
 			"contexts": ["editable"],
-			"onclick": getCopiedData
+			"onclick": pasteEditableData
 		} );
 	}
 	
@@ -48,9 +48,31 @@
 			type = "pg";
 		}
 		if (data) {
-			sendDataToServer(data, type);
+			sendDataToServer(data, type, function (response) {
+                if (!response) {
+                    chrome.tabs.executeScript(tab.id, {code: 'alert("Could not copy to Cloudboard. Try again in a few. If the problem persists, contact me: cloudboard@jhartig.com.");'});
+                }
+			});;
 		}
 	}
+    
+    function pasteEditableData(info, tab) {
+        //make sure we get the data from the server now
+        var time = Math.round(new Date().getTime() / 1000);
+                
+        var callback = function(data) {
+            if (data && data[0]) {
+                var paste = (data[0].text).replace(/"/g, '\\"').replace(/\n/g, '');
+                chrome.tabs.executeScript(tab.id, {code: 'if (document.activeElement.selectionStart) { document.activeElement.value = (document.activeElement.value).substr(0,document.activeElement.selectionStart)+"'+paste+'"+(document.activeElement.value).substr(document.activeElement.selectionEnd); } else { document.activeElement.value += "'+paste+'"; }'});
+            }
+        };
+        
+        if (time <= parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))+1) {
+            getInboxFromCache(callback);
+        } else {
+            getInboxFromServer(callback);
+        }
+    }
 	
 	function sendDataToServer(data, type, callback) {
 	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
@@ -79,13 +101,25 @@
                 if (callback) {
                     callback(false);
                 }
+            } else {
+                if (callback) {
+                    callback(false);
+                }
             }
 		}
 	}
     
     chrome.extension.onRequest.addListener(
         function(request, obj, callback) {
-            sendDataToServer(request.data, (request.type ? request.type : 'txt'), callback);
+            if (request == "ifUpdated") {
+                getIfUpdated(callback);
+            } else if (request == "getInbox") {
+                getInboxFromServer(callback);
+            } else if (request == "getCacheInbox") {
+                getInboxFromCache(callback);
+            } else {
+                sendDataToServer(request.data, (request.type ? request.type : 'txt'), callback);
+            }
         }
     );
 	
@@ -98,6 +132,80 @@
 			openLink("options.html");
 		}
 	}
+    
+    function getIfUpdated(callback) {
+    	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
+                if (localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {                
+                    var xhr = new XMLHttpRequest();
+            		xhr.onreadystatechange = function (xhr) { handleIfUpdatedResponse(xhr, callback); };
+            		xhr.open("GET", "http://cloudboard.jhartig.com/lastUpdate.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+            		xhr.send();
+                } else {
+                    callback(true);
+                }
+           } else {
+                callback("invalid_token");
+           }
+    	}
+	
+    function handleIfUpdatedResponse(xhr, callback) {
+	    if (!xhr.readyState) {
+	       xhr = xhr.target;
+	    }
+		if (xhr.readyState == 4) {
+			var resp = xhr.responseText;
+            if (resp == "invalid_token") {
+                localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+                callback("invalid_token");
+            } else {
+                var time = parseInt(resp);
+                if (!time || time > parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))) {
+                    callback(true);
+                } else {
+                    callback(false);
+                }
+            }
+		}
+	}
+    
+    function getInboxFromServer(callback) {
+	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
+            var xhr = new XMLHttpRequest();
+    		xhr.onreadystatechange = function (xhr) { handleInboxResponse(xhr, callback); };
+    		xhr.open("GET", "http://cloudboard.jhartig.com/inbox.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+    		xhr.send();
+       } else {
+            callback("invalid_token");
+       }
+	}
+
+	function handleInboxResponse(xhr, callback) {
+	    if (!xhr.readyState) {
+	       xhr = xhr.target;
+	    }
+		if (xhr.readyState == 4) {
+			var resp = xhr.responseText;
+            if (resp == "invalid_token") {
+                localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
+                callback("invalid_token");
+            } else {
+                localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
+                localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
+                try {
+                    resp = JSON.parse(resp);
+                } catch (e) {}
+                callback(resp);
+            }
+		}
+	}
+    
+    function getInboxFromCache(callback) {
+        var resp = localStorage.getItem("com.jhartig.cloudboard.inboxCache");
+        try {
+            resp = JSON.parse(resp);
+        } catch (e) {}
+        callback(resp);
+    }
 	
 	setupContexts();
 	openOptions();
