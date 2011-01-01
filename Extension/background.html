@@ -166,7 +166,7 @@
         		openConnection.open("GET", "http://cloudboard.jhartig.com/listen.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
                 openConnection.send();
                 if (timeout) { clearTimeout(timeout); }
-                timeout = setTimeout(checkConnectionStatus, 300000); //close connection after 5 minutes (300000)
+                timeout = setTimeout(checkConnectionStatus, 900000); //close connection after 15 minutes (900000)
            }
        }
     }
@@ -180,7 +180,8 @@
             openConnection = false;
             if (xhr.responseText == "invalid_token") {
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
-            } else if (xhr.status == 200) {
+            } else if (xhr.status == 200) {                
+                resp = resp.substr(1); //remove inital "-" that was echoed to fake lighttpd into thinking we started response
                 console.log("got resp", resp);
                 try {
                     resp = JSON.parse(resp);
@@ -221,9 +222,9 @@
                 clearTimeout(timeout);
                 openServerConnection();
             } else if (!aborted) {
+                if (xhr.responseText) { console.error("received error: ", xhr.responseText); }
                 clearTimeout(timeout);
-                setTimeout(openServerConnection, 2000); //resume in 2 seconds because we got an error, even though this is probably ok
-                console.error("received error: ", xhr.responseText);
+                setTimeout(openServerConnection, 2000); //resume in 2 seconds because we got an error, even though this is probably ok                
             }
 		}
 	}
