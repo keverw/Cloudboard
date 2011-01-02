@@ -153,6 +153,8 @@
     var error = false;
     var openConnection = false;
     var timeout = false;
+    
+    var errors = 0;
 
     function openServerConnection() {
         if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1) {
@@ -178,8 +180,10 @@
 			var resp = xhr.responseText;
             openConnection = false;
             if (xhr.responseText == "invalid_token") {
+                errors = 0;
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
             } else if (xhr.status == 200) {
+                errors = 0;
                 console.log("Received New Paste From Server: ", resp);
                 try {
                     resp = JSON.parse(resp);
@@ -221,9 +225,24 @@
                 openServerConnection();
             } else if (!aborted) {
                 error = true;
+                errors++;
                 if (xhr.responseText) { console.error("received error: ", xhr.responseText); }
                 clearTimeout(timeout);
-                setTimeout(openServerConnection, 5000); //resume in 5 seconds because we got an error, even though this is probably ok                
+                if (errors >= 10) {
+                    if (errors%5==0) {
+                        var notification = webkitNotifications.createNotification(
+                          'icon48.png',
+                          'New Cloudboard Paste',
+                          "Notifications are turned off for 5 minutes. Cannot connect to real-time server."
+                        );
+                        notification.show();
+                    }
+                    setTimeout(openServerConnection, 300000); //we got a serious problem, wait 5 minutes
+                } else if (errors > 5) {
+                    setTimeout(openServerConnection, 4000); //we got a serious problem, wait 40 seconds
+                } else {
+                    setTimeout(openServerConnection, 500); //resume in 5 seconds because we got an error, even though this is probably ok
+                }            
             }
 		}
 	}

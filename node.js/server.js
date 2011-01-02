@@ -110,6 +110,7 @@ function sendPostToUsers(request, response, user, post) {
             	});
         		response.write(post, 'utf8');
         		response.end();
+                users[user].splice(i,1); //delete the server now that we wrote to it
             }
         }
     }

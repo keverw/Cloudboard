@@ -27,7 +27,8 @@ if (isset($_GET['token'])) {
             die($_GET['callback'] . "(" . json_encode($items) . ")");
         } else {
             header("Content-type: application/json; charset=utf-8");
-            die(json_encode($items));
+            echo json_encode($items);
+            exit(0);
         }
         
     } else {

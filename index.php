@@ -13,7 +13,9 @@ if (isset($_GET['token'])) {
         if (isset($_GET['post'])) {
             $text = file_get_contents("php://input");
             if ($db->checkForDup($user, $text)) {
-                if ($db->addItem($user, $text)) {
+                if (($id = $db->addItem($user, $text))) {
+                    //half-baked attempt to incorporate current clients into testing of node.js
+                    sendRequestToNodeJS("post?token=".$_GET['token'], json_encode(array('id'=>$id, 'type'=>'txt', 'text'=>$text)));
                     die("true");
                 } else {
                     die("false");
