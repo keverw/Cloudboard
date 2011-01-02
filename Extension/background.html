@@ -31,22 +31,19 @@
 	function getCopiedData(info, tab) {
 		var data, type;
 		if (info.linkUrl) {
-			console.log("Got link", info.linkUrl);
 			data = info.linkUrl;
 			type = "lnk";
 		} else if (info.srcUrl) {
-			console.log("Got image", info.srcUrl);
 			data = info.srcUrl;
 			type = "img";
 		} else if (info.selectionText) {
-			console.log("Got text", info.selectionText);
 			data = info.selectionText;
 			type = "txt";
 		} else if (info.pageUrl) {
-			console.log("Got page URL", info.pageUrl);
 			data = info.pageUrl;
 			type = "pg";
 		}
+        console.log("Pasting to server: "+data);
 		if (data) {
 			sendDataToServer(data, type, function (response) {
                 if (!response) {
@@ -147,26 +144,28 @@
             openConnection.abort();
             openConnection = false;
             console.error("connection aborted because changed setting");
-        } else if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1 && !aborted) {
+        } else if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1 && !aborted && !error) {
             console.log("changed notification setting");
             openServerConnection();            
         }
     }
     
+    var error = false;
     var openConnection = false;
     var timeout = false;
 
     function openServerConnection() {
         if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1) {
-            console.log("opening connection");
+            console.log("Opening long polling connection");
             aborted = false;
+            error = false;
             if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
         		openConnection = new XMLHttpRequest();
         		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
-        		openConnection.open("GET", "http://cloudboard.jhartig.com/listen.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+        		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
                 openConnection.send();
                 if (timeout) { clearTimeout(timeout); }
-                timeout = setTimeout(checkConnectionStatus, 900000); //close connection after 15 minutes (900000)
+                timeout = setTimeout(checkConnectionStatus, 840000); //close connection after 14 minutes (840000)
            }
        }
     }
@@ -180,9 +179,8 @@
             openConnection = false;
             if (xhr.responseText == "invalid_token") {
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
-            } else if (xhr.status == 200) {                
-                resp = resp.substr(1); //remove inital "-" that was echoed to fake lighttpd into thinking we started response
-                console.log("got resp", resp);
+            } else if (xhr.status == 200) {
+                console.log("Received New Paste From Server: ", resp);
                 try {
                     resp = JSON.parse(resp);
                 } catch (e) {}
@@ -222,9 +220,10 @@
                 clearTimeout(timeout);
                 openServerConnection();
             } else if (!aborted) {
+                error = true;
                 if (xhr.responseText) { console.error("received error: ", xhr.responseText); }
                 clearTimeout(timeout);
-                setTimeout(openServerConnection, 2000); //resume in 2 seconds because we got an error, even though this is probably ok                
+                setTimeout(openServerConnection, 5000); //resume in 5 seconds because we got an error, even though this is probably ok                
             }
 		}
 	}
@@ -258,7 +257,7 @@
                 if (localStorage.getItem("com.jhartig.cloudboard.lastUpdated")) {                
                     var xhr = new XMLHttpRequest();
             		xhr.onreadystatechange = function (xhrr) { handleIfUpdatedResponse(xhrr, callback); };
-            		xhr.open("GET", "http://cloudboard.jhartig.com/lastUpdate.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+            		xhr.open("GET", "http://cbnode.jhartig.com/lastUpdated?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
             		xhr.send();
                 } else {
                     callback(true);

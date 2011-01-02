@@ -45,6 +45,10 @@ if (isset($_GET['token'])) {
         } else {
             $auth = encryptAuth($_SESSION['googleEmail']);
             $user = $db->addUser($auth, $_SESSION['googleEmail']);
+            if ($user) {
+                file_put_contents(USERFILE, $user.":".$auth."\n", FILE_APPEND);
+                sendRequestToNodeJS("newuser");
+            }
         }
     }
 }
@@ -169,7 +173,7 @@ if (isset($_GET['token'])) {
     } else if (isset($auth)) {
         echo "<p>Auth: ".urlencode($auth)."</p>";
         ?>
-        <p><a href='Cloudboard.crx'>Download extension</a><br /> To use, select text on a webpage and right click, then hit Copy to Cloudboard, then on the new computer, 
+        <p><a href="https://chrome.google.com/webstore/detail/biiibckinakeiomclcbohpmhbidkfpkk">Download extension</a><br /> To use, select text on a webpage and right click, then hit Copy to Cloudboard, then on the new computer, 
         Hit the icon in the menubar and select the entry.<br /> 
         You can also right click on a page or link to copy the URL, on an image to copy the source url.<br />
         You are allowed max of 10 entries at a time and the oldest entries will be deleted if you go over.<br />

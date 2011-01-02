@@ -1,7 +1,7 @@
 <?php
 
-ignore_user_abort(true); //we can disable this but for testing I want to see -
-//set_time_limit(5); //this doesn't do shit
+//this file is obsolete
+
 ob_implicit_flush(true);
 
 //this is the inbox for versions >=0.6
@@ -12,6 +12,14 @@ require("db.php");
 if (!headers_sent()) {
     header('Access-Control-Allow-Origin: *');
 }
+
+function shutdown(){
+    file_put_contents("/tmp/phplog", "0", FILE_APPEND);
+}
+
+file_put_contents("/tmp/phplog", "-", FILE_APPEND);
+
+register_shutdown_function("shutdown");
 
 //begin testing
 $x = 0;
@@ -24,13 +32,11 @@ while (true) {
     ob_end_clean();
     if(connection_status() != CONNECTION_NORMAL)
     {
-        file_put_contents("/tmp/log.cb","-",FILE_APPEND);
         exit(0);
     } else {
-        file_put_contents("/tmp/log.cb",connection_status(),FILE_APPEND);
+        
     }
-    if ($x > 15) {
-        file_put_contents("/tmp/log.cb",5,FILE_APPEND);
+    if ($x > 30) {
         exit(0);
     }
 }
@@ -63,9 +69,10 @@ if (isset($_GET['token'])) {
         }
         
         echo "-"; //start output
+        ob_end_flush();
         flush();
-        ob_flush();
-        //$db->subscribe($user, 'gotItem');
+        ob_end_clean();
+        $db->subscribe($user, 'gotItem');
         
     } else {
         postInvalidToken();

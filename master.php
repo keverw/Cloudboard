@@ -16,4 +16,17 @@ function encryptAuth($email) {
     return sha1($id);
 }
 
+function sendRequestToNodeJS($method, $data=false) {
+    $ch = curl_init("http://127.0.0.1:8100/".$method);
+    if ($data) {
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    }
+    curl_setopt($ch, CURLOPT_HEADER, 0);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 500); //1sec TOPS //CURLOPT_CONNECTTIMEOUT_MS wtf
+    curl_setopt($ch, CURLOPT_TIMEOUT, 1); //1 second TOPS
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    return curl_exec($ch);
+}
+
 ?>

@@ -23,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             $text = file_get_contents("php://input");
             if ($text) {
                 if ($db->checkForDupEx($user, $text, $type)) {
-                    if ($db->addItemEx($user, $text, $type)) {
+                    if (($item = $db->addItemEx($user, $text, $type))) {
+                        sendRequestToNodeJS("post?token=".$_GET['token'], json_encode($item));
                         die("true");
                     } else {
                         die("false");

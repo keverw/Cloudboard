@@ -155,7 +155,11 @@ class db {
                     $userID = $this->redis->incr(self::USER_IDS_KEY);                    
                     if ($userID) {
                         $this->redis->zadd(self::USERS_SET, $userID, $email);
-                        return $this->redis->set(sprintf(self::USER_AUTH_KEY, $auth, $userID), $userID);
+                        if ($this->redis->set(sprintf(self::USER_AUTH_KEY, $auth, $userID), $userID)) {
+                            return $userID;
+                        } else {
+                            return false;
+                        }
                     }
                 }
             } catch (Exception $e) {
@@ -207,8 +211,8 @@ class db {
                                 count($this->keysBackup[$user]) > self::USER_ITEM_LIMIT) {
                                 $this->redis->delete(array_pop($this->keysBackup[$user]));
                             }
-                            $this->redis->publish(sprintf(self::PUBLISH_CHAN, $user), $itemID."=".(string)$text.":".$typeId);
-                            return $itemID;
+                            //$this->redis->publish(sprintf(self::PUBLISH_CHAN, $user), $itemID."=".(string)$text.":".$typeId);
+                            return array('text'=>(string)$text, 'type'=>(isset($this->types[$type]) ? $type : 'txt'), 'id'=>$itemID);
                         }
                     }
                 }                
@@ -389,6 +393,25 @@ class db {
             }
         }
         return 0;
+    }
+    
+    //ah
+    public function getUsers() {
+        if ($this->redis) {
+            try {
+                $users = array();
+                $uKeys = $this->redis->getKeys(sprintf(self::USER_AUTH_SEARCH_KEY, "*"));
+                foreach ($uKeys as $key) {
+                    list($auth) = sscanf($key, self::USER_AUTH_KEY);
+                    list($auth, $u) = explode(":", $auth);
+                    $users[$u] = $auth;
+                }          
+                return $users;
+            } catch (Exception $e) {
+                return array();
+            }
+        }
+        return array();
     }
     
     //stats
