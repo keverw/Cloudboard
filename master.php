@@ -24,7 +24,7 @@ function sendRequestToNodeJS($method, $data=false) {
     }
     curl_setopt($ch, CURLOPT_HEADER, 0);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 500); //1sec TOPS //CURLOPT_CONNECTTIMEOUT_MS wtf
-    curl_setopt($ch, CURLOPT_TIMEOUT, 1); //1 second TOPS
+    curl_setopt($ch, CURLOPT_TIMEOUT, 2); //1 seconds TOPS
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     return curl_exec($ch);
 }

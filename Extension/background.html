@@ -112,10 +112,13 @@
     function checkConnectionStatus() {
         if (openConnection) {
             aborted = true; //tell us not to restart connection on error
+            errors = 0; //we safely disconnected
+            if (interval) { clearInterval(interval); }
             openConnection.abort();
             console.error("connection aborted after time limit");
             openConnection = false;
-            openServerConnection(); //reopen            
+            openServerConnection(); //reopen
+            disconnectedOnIdle = false;
         }
     }
     
@@ -127,12 +130,14 @@
            if ((state == "idle" || state == "locked") && openConnection) {
                clearTimeout(timeout);
                aborted = true; //tell us not to restart connection on error
+               if (interval) { clearInterval(interval); }
                openConnection.abort();
-               openConnection = false;               
+               openConnection = false;
                console.error("connection aborted because computer is idle");
                disconnectedOnIdle = true;
            } else if (state == "active" && disconnectedOnIdle && !openConnection) { //they are back
                console.log("connection reopened after not idle");
+               errors = 0;
                openServerConnection();
                disconnectedOnIdle = false;
            }
@@ -141,11 +146,14 @@
         if (openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 0) {
             clearTimeout(timeout);
             aborted = true; //tell us not to restart connection on error
+            if (interval) { clearInterval(interval); }
             openConnection.abort();
             openConnection = false;
+            errors = 0;
             console.error("connection aborted because changed setting");
         } else if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1 && !aborted && !error) {
             console.log("changed notification setting");
+            errors = 0;
             openServerConnection();            
         }
     }
@@ -153,6 +161,9 @@
     var error = false;
     var openConnection = false;
     var timeout = false;
+    var interval = false;
+    
+    var serverID = (localStorage.getItem("com.jhartig.cloudboard.serverID") ? localStorage.getItem("com.jhartig.cloudboard.serverID") : 0);
     
     var errors = 0;
 
@@ -161,17 +172,25 @@
             console.log("Opening long polling connection");
             aborted = false;
             error = false;
+            disconnectedOnIdle = false;
             if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
         		openConnection = new XMLHttpRequest();
         		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
         		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+                //openConnection.setRequestHeader("Connection", "close");
+                openConnection.setRequestHeader("CB-ServerID", serverID);
                 openConnection.send();
                 if (timeout) { clearTimeout(timeout); }
                 timeout = setTimeout(checkConnectionStatus, 840000); //close connection after 14 minutes (840000)
+                
+                //if (interval) { clearInterval(interval); }
+                //interval = setInterval(getPartialResponse, 1000);
+                //chrome doesn't support partialResponses
+                
            }
        }
     }
-    
+        
     function handleListenResponse(xhr) {
         if (!xhr.readyState) {
 	       xhr = xhr.target;            
@@ -179,70 +198,98 @@
 		if (xhr.readyState == 4) {
 			var resp = xhr.responseText;
             openConnection = false;
+            if (interval) { clearInterval(interval); }
             if (xhr.responseText == "invalid_token") {
                 errors = 0;
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
             } else if (xhr.status == 200) {
                 errors = 0;
-                console.log("Received New Paste From Server: ", resp);
-                try {
-                    resp = JSON.parse(resp);
-                } catch (e) {}
-                if (resp && resp.text && localStorage.getItem("com.jhartig.cloudboard.inboxCache")) {
-                    var inboxCache = localStorage.getItem("com.jhartig.cloudboard.inboxCache");
+                if (resp.indexOf("$") >=0) {
+                    resp = resp.substr(resp.indexOf("$")+1);
+                    console.log("Received New Paste From Server: ", resp);
                     try {
-                        inboxCache = JSON.parse(inboxCache);
-                    } catch (e) {
-                        getInboxFromServer(function (inbox) {
-                            if (inbox && inbox[0]) {
-                                if (inbox[0].text != lastPaste) {
-                                    var notification = webkitNotifications.createNotification(
-                                      'icon48.png',
-                                      'New Cloudboard Paste',
-                                      inbox[0].text
-                                    );
-                                    notification.show();
+                        resp = JSON.parse(resp);
+                    } catch (e) {}
+                    if (resp && resp.text && localStorage.getItem("com.jhartig.cloudboard.inboxCache")) {
+                        var inboxCache = localStorage.getItem("com.jhartig.cloudboard.inboxCache");
+                        try {
+                            inboxCache = JSON.parse(inboxCache);
+                        } catch (e) {
+                            getInboxFromServer(function (inbox) {
+                                if (inbox && inbox[0]) {
+                                    if (inbox[0].text != lastPaste) {
+                                        var notification = webkitNotifications.createNotification(
+                                          'icon48.png',
+                                          'New Cloudboard Paste',
+                                          inbox[0].text
+                                        );
+                                        notification.show();
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
+                        inboxCache.unshift(resp); //add the new item
+                        if (inboxCache.length > 10) {
+                            inboxCache.pop();
+                        }
+                        localStorage.setItem("com.jhartig.cloudboard.inboxCache", JSON.stringify(inboxCache));
+                        localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
+                        if (resp.text != lastPaste) {
+                            var notification = webkitNotifications.createNotification(
+                              'icon48.png',
+                              'New Cloudboard Paste',
+                              resp.text
+                            );
+                            notification.show();
+                        }         
                     }
-                    inboxCache.unshift(resp); //add the new item
-                    if (inboxCache.length > 10) {
-                        inboxCache.pop();
-                    }
-                    localStorage.setItem("com.jhartig.cloudboard.inboxCache", JSON.stringify(inboxCache));
-                    localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
-                    if (resp.text != lastPaste) {
-                        var notification = webkitNotifications.createNotification(
-                          'icon48.png',
-                          'New Cloudboard Paste',
-                          resp.text
-                        );
-                        notification.show();
-                    }         
                 }
                 clearTimeout(timeout);
                 openServerConnection();
+            } else if (xhr.status == 201) {
+                //this means we got a new serverID
+                console.log("got serverID", resp);
+                serverID = resp;
+                localStorage.setItem("com.jhartig.cloudboard.serverID", resp);
+                setTimeout(openServerConnection, 50);
             } else if (!aborted) {
                 error = true;
                 errors++;
                 if (xhr.responseText) { console.error("received error: ", xhr.responseText); }
                 clearTimeout(timeout);
-                if (errors >= 10) {
-                    if (errors%5==0) {
-                        var notification = webkitNotifications.createNotification(
-                          'icon48.png',
-                          'New Cloudboard Paste',
-                          "Notifications are turned off for 5 minutes. Cannot connect to real-time server."
-                        );
-                        notification.show();
-                    }
-                    setTimeout(openServerConnection, 300000); //we got a serious problem, wait 5 minutes
-                } else if (errors > 5) {
-                    setTimeout(openServerConnection, 4000); //we got a serious problem, wait 40 seconds
+                if (xhr.responseText == "too many streams") {
+                    var notification = webkitNotifications.createNotification(
+                      'icon48.png',
+                      'Notifications Off',
+                      "Notifications are turned off for 5 minutes. Too many streams open from this IP."
+                    );
+                    notification.show();
+                    setTimeout(openServerConnection, 300000);
+                } else if (xhr.responseText == "blocked") {
+                    var notification = webkitNotifications.createNotification(
+                      'icon48.png',
+                      'Notifications Off',
+                      "Notifications are turned off for 15 minutes. Server blocked us. Too many connections?"
+                    );
+                    notification.show();
+                    setTimeout(openServerConnection, 300000);
                 } else {
-                    setTimeout(openServerConnection, 500); //resume in 5 seconds because we got an error, even though this is probably ok
-                }            
+                    if (errors >= 10) {
+                        if (errors%5==0) {
+                            var notification = webkitNotifications.createNotification(
+                              'icon48.png',
+                              'Notifications Off',
+                              "Notifications are turned off for 5 minutes. Cannot connect to real-time server."
+                            );
+                            notification.show();
+                        }
+                        setTimeout(openServerConnection, 300000); //we got a serious problem, wait 5 minutes
+                    } else if (errors > 5) {
+                        setTimeout(openServerConnection, 40000); //we got a serious problem, wait 40 seconds
+                    } else {
+                        setTimeout(openServerConnection, 5000); //resume in 5 seconds because we got an error, even though this is probably ok
+                    }
+                }
             }
 		}
 	}
@@ -255,6 +302,16 @@
                 getInboxFromServer(callback);
             } else if (request == "getCacheInbox") {
                 getInboxFromCache(callback);
+            } else if (request == "newToken") {
+                clearTimeout(timeout);
+                errors = 0;
+                aborted = true; //tell us not to restart connection on error
+                if (interval) { clearInterval(interval); }
+                openConnection.abort();
+                openConnection = false;
+                console.error("connection aborted because of new token");
+                disconnectedOnIdle = false;
+                setTimeout(openServerConnection, 500);
             } else {
                 sendDataToServer(request.data, (request.type ? request.type : 'txt'), callback);
             }
