@@ -160,7 +160,7 @@ function sendPostToUsers(request, response, user, post) {
 	response.write('sending', 'ascii');
 	response.end();
     
-    usersLastUpdated[user] = (new Date()).getTime();
+    usersLastUpdated[user] = Math.round(new Date().getTime() / 1000);
     
     for(var i in users[user]) {
         response = users[user][i].response;

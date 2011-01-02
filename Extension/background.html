@@ -427,7 +427,7 @@
     function getInboxFromServerIfUpdated(callback) {
         //get if we have updated inbox and then update
         getIfUpdated(function(update) {
-            if (update || localStorage.getItem("com.jhartig.cloudboard.inboxCache") == null) {
+            if ((update && update != "invalid_token") || localStorage.getItem("com.jhartig.cloudboard.inboxCache") == null) {
                 console.log("fetching new inbox from server");
                 getInboxFromServer(callback);
             } else {
