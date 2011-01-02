@@ -14,8 +14,9 @@
                 document.getElementById("loading").style.display = "block";
                 getInboxFromServer(displayInbox);
             } else {
-                getIfUpdated(function(update) {
-                    if (!update && localStorage.getItem("com.jhartig.cloudboard.inboxCache") != null) {
+                //getIfUpdated(function(update) {
+                    //getInboxFromCache will now handle inbox cache refreshing
+                    if (localStorage.getItem("com.jhartig.cloudboard.inboxCache") != null) {
                         document.getElementById("loading").style.display = "none";
                         if (!showingCache) { //if this is true then we don't need to update
                             getInboxFromCache(displayInbox);
@@ -30,7 +31,7 @@
                         getInboxFromServer(displayInbox);
                         showingCache = true;
                     }
-                });
+                //});
             }
         }
         
@@ -123,7 +124,7 @@
                 document.getElementById("container").style.display = "none";
                 document.getElementById("fail").style.display = "block";
     		} else {
-                refresh();
+                refresh(); //isn't actually going to refresh (changed in 0.6.2)
             }
         }
                 

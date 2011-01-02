@@ -126,12 +126,10 @@ function waitForUpdate(request, response, user, ip) {
         
     request.connection.setTimeout(900000);
     request.connection.setNoDelay(true);
-    request.connection.setKeepAlive(false);
     
     response.writeHead(200, {
 		'Content-Type' : 'text/plain',
-		'Access-Control-Allow-Origin' : '*',
-        'Connection' : 'close'
+		'Access-Control-Allow-Origin' : '*'
 	});
 	response.write("-", 'utf8');
     
@@ -193,7 +191,7 @@ function sendPostToUsers(request, response, user, post) {
                 }
                 if (users[user][i].ip && accessedIPs[users[user][i].ip]) { accessedIPs[users[user][i].ip].streams--; };
                 users[user].splice(i,1); //delete the server now that we wrote to it
-                console.log("response sent!");
+                console.log("responses sent!");
             }
         }
     }
@@ -215,9 +213,39 @@ function getLastUpdatedForUser(request, response, user, ip) {
 		response.end();
         return true;
     } else {
-        var request = http.createClient(80, '74.117.157.221').request('GET', '/lastUpdate.php?token='+user+'&version=2', {'host': 'cloudboard.jhartig.com'});
-        request.end();
-        request.on('response', function (resp) {
+        var client = http.createClient(80, '74.117.157.221');
+        client.on('timeout', function() {
+        	response.writeHead(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	});
+    		response.write('could not get time.', 'ascii');
+    		response.end();
+        });
+        client.on('error', function(err) {
+            response.writeHead(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	});
+    		response.write('could not get time.', 'ascii');
+    		response.end();
+        });
+        var reqC = client.request('GET', '/lastUpdate.php?token='+user+'&version=2', {'host': 'cloudboard.jhartig.com'});
+        reqC.end();
+        try {
+            reqC.connection.setTimeout(2000);
+        } catch(e) {
+            console.log("cannot send timeout");
+        }
+        reqC.on('timeout', function() {
+        	response.writeHead(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	});
+    		response.write('could not get time.', 'ascii');
+    		response.end();
+        });
+        reqC.on('response', function (resp) {
             resp.setEncoding('utf8');
             var body = "";
             resp.on('data', function (chunk) {
@@ -225,7 +253,6 @@ function getLastUpdatedForUser(request, response, user, ip) {
             });
             resp.on('end', function () {
                 if (resp.statusCode == 200) {
-                    console.log("got time:"+body);
                     usersLastUpdated[user] = parseInt(body);
                     response.writeHead(200, {
                 		'Content-Type' : 'text/plain',
@@ -309,7 +336,39 @@ function refreshUserListeners() {
 }
 
 function getIP(req) {
-    var ip_address = ip_address = ( req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'] : (req.connection.remoteAddress ? req.connection.remoteAddress : req.remoteAddress) );
+    var ip_address = (req.connection.remoteAddress ? req.connection.remoteAddress : req.remoteAddress);
+    //check for cloudflare
+    try {
+        if (req.headers['cf-connecting-ip']) {
+            var ipParts = ip_address.split(".");
+            var cloudFlare = false;
+            switch (parseInt(ipParts[0])) {
+                case 204:
+                    //(204.93.177.0 - 204.93.177.255)
+                    //(204.93.240.0 - 204.93.240.255)
+                    if (parseInt(ipParts[1]) == 93 && (parseInt(ipParts[2]) == 240 || parseInt(ipParts[2]) == 177)) {
+                        cloudFlare = true;
+                    }
+                break
+                case 199:
+                    //(199.27.128.0 - 199.27.135.255)
+                    if (parseInt(ipParts[1]) == 27 && (parseInt(ipParts[2]) < 136 || parseInt(ipParts[2]) > 127)) {
+                        cloudFlare = true;
+                    }
+                break
+                case 173:
+                    //(173.245.48.0 - 173.245.63.255)
+                    if (parseInt(ipParts[1]) == 245 && (parseInt(ipParts[2]) < 64 || parseInt(ipParts[2]) > 47)) {
+                        cloudFlare = true;
+                    }
+                break
+            }
+            if (cloudFlare) {
+                ip_address = req.headers['cf-connecting-ip'];
+            }
+        }
+    } catch (e) {}
+    
     return ip_address;
 }
 
@@ -475,34 +534,32 @@ getUsers(function() {
             if (e) {
                 //we got an error
                 response.writeHead(500, {
-        			'Content-Type' : 'text/plain',
-        			'Access-Control-Allow-Origin' : '*'
+        			'Content-Type' : 'text/plain'
         		});
         		response.write('error', 'ascii');
         		response.end();
                 return;
             }
             
+            request.connection.setTimeout(2000);
+            
             switch (urlParts.pathname.toLowerCase()) {
                 case "/post":
                     var user = (urlParts.query ? urlParts.query.token : false);
-                    console.log("got post to user: "+user+" with "+body);                    
-                    request.connection.setTimeout(2000);                    
+                    console.log("got post to user: "+user+" with "+body);
                     sendPostToUsers(request, response, user, body);
                 break
                 case "/newuser":
                     getUsers()
                     response.writeHead(200, {
-            			'Content-Type' : 'text/plain',
-            			'Access-Control-Allow-Origin' : '*'
+            			'Content-Type' : 'text/plain'
             		});
             		response.write('ok', 'ascii');
             		response.end();
                 break
                 default:
                     response.writeHead(404, {
-            			'Content-Type' : 'text/plain',
-            			'Access-Control-Allow-Origin' : '*'
+            			'Content-Type' : 'text/plain'
             		});
             		response.write('not found', 'ascii');
             		response.end();
