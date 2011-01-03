@@ -6,7 +6,8 @@ var usersLastUpdated = {};
 var url = require('url');
 var sys = require('util');
 
-var userListeningLimit = 6; //max of 6 listeners per key
+var userListeningLimit = 8; //max of 8 listeners per key
+var connectionLive = 900000;
 
 function checkUser(request, response, user, ip) {
     //no sent user
@@ -124,7 +125,7 @@ function waitForUpdate(request, response, user, ip) {
         refreshUserListeners();
     });
         
-    request.connection.setTimeout(900000);
+    request.connection.setTimeout(connectionLive);
     request.connection.setNoDelay(true);
     
     response.writeHead(200, {
@@ -380,7 +381,7 @@ function deleteIPCheck(ip) {
     } else {
         accessedIPs[ip].connections = 1;
         accessedIPs[ip].time = (new Date()).getTime();
-        accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, 900000); //try again in 15 mins
+        accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, connectionLive); //try again in 15 mins
     }
 }
 
@@ -410,7 +411,7 @@ function checkIP(ip) {
         }
     } else {
         accessedIPs[ip] = {connections: 1, notFound: 0, streams: 0, blocked: false, time: time};
-        accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, 900000); //clear ip in 15 mins
+        accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, connectionLive); //clear ip in 15 mins
         return 1;
     }
 }
