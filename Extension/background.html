@@ -54,21 +54,13 @@
 	}
     
     function pasteEditableData(info, tab) {
-        //make sure we get the data from the server now
-        var time = Math.round(new Date().getTime() / 1000);
-                
-        var callback = function(data) {
+        //get inbox from cache will do everything        
+        getInboxFromCache(function(data) {
             if (data && data[0]) {
                 var paste = (data[0].text).replace(/"/g, '\\"').replace(/\n/g, '');
                 chrome.tabs.executeScript(tab.id, {code: 'if (document.activeElement.selectionStart) { document.activeElement.value = (document.activeElement.value).substr(0,document.activeElement.selectionStart)+"'+paste+'"+(document.activeElement.value).substr(document.activeElement.selectionEnd); } else { document.activeElement.value += "'+paste+'"; }'});
             }
-        };
-        
-        if (time <= parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))+1) {
-            getInboxFromCache(callback);
-        } else {
-            getInboxFromServer(callback);
-        }
+        });
     }
     
     var lastPaste = null;
@@ -168,20 +160,23 @@
             aborted = false;
             disconnectedOnIdle = false;
             if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
-        		openConnection = new XMLHttpRequest();
-        		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
-        		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
-                //openConnection.setRequestHeader("Connection", "close");
-                openConnection.setRequestHeader("CB-ServerID", serverID);
-                openConnection.send();
-                if (timeout) { clearTimeout(timeout); }
-                timeout = setTimeout(checkConnectionStatus, 960000); //close connection after 16 minutes (840000)
-                //server should timeout around 15 minutes
-                
-                //if (interval) { clearInterval(interval); }
-                //interval = setInterval(getPartialResponse, 1000);
-                //chrome doesn't support partialResponses
-                
+      		    try {
+                    openConnection = new XMLHttpRequest();
+            		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
+            		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+                    //openConnection.setRequestHeader("Connection", "close");
+                    openConnection.setRequestHeader("CB-ServerID", serverID);
+                    openConnection.send();
+                    if (timeout) { clearTimeout(timeout); }
+                    timeout = setTimeout(checkConnectionStatus, 1560000); //close connection after 26 minutes (1560000)
+                    //server should timeout around 15 minutes
+                    
+                    //if (interval) { clearInterval(interval); }
+                    //interval = setInterval(getPartialResponse, 1000);
+                    //chrome doesn't support partialResponses
+                } catch (e) {
+                    
+                }
            }
        }
     }
@@ -410,8 +405,10 @@
 		}
 	}
     
-    function getInboxFromCache(callback) {        
-        if (errors > 5) {
+    function getInboxFromCache(callback) {
+        //make sure we get the data from the server now
+        var time = Math.round(new Date().getTime() / 1000);
+        if (errors > 5 && time <= parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))+2) { // if we got it 1 second ago, we are fine
             getInboxFromServerIfUpdated(callback);
         } else {
             var resp = localStorage.getItem("com.jhartig.cloudboard.inboxCache");

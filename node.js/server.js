@@ -7,7 +7,7 @@ var url = require('url');
 var sys = require('util');
 
 var userListeningLimit = 8; //max of 8 listeners per key
-var connectionLive = 900000;
+var connectionLive = 1500000; //25 mins 
 
 function checkUser(request, response, user, ip) {
     //no sent user
@@ -79,9 +79,11 @@ function waitForUpdate(request, response, user, ip) {
             //check to see id we already have this id as an active connection and close if so
             for(var i in users[user]) {
                 if (users[user][i].id == id[1]) {
+                    //hmmmm should we do a setTimeout here?
                     console.log("closing old connection from user: "+user+" with id: "+id);
                     try {
                         users[user][i].response.end();
+                        users[user][i].response.connection.end();
                     } catch (e) {}
                     if (users[user][i].ip && accessedIPs[users[user][i].ip]) { accessedIPs[users[user][i].ip].streams--; };
                     users[user].splice(i,1);
@@ -98,7 +100,7 @@ function waitForUpdate(request, response, user, ip) {
         return false;
     }
     
-    if (accessedIPs[ip].streams >= 3) {
+    if (accessedIPs[ip].streams >= 5) {
         console.log("user: "+user+" on ip: "+ip+" hit too many streams");
         response.writeHead(403, {
 			'Content-Type' : 'text/plain',
@@ -111,21 +113,28 @@ function waitForUpdate(request, response, user, ip) {
             
     accessedIPs[ip].streams++;
     
+    //gracefully (not really) close the connection after x amount of time
+    //by gracefully I mean, don't let the OS handle it
+    //by not that graceful, I mean we call response.connection.end() in order to get the close event to call
+    var timeout = setTimeout(function() {try {response.end();response.connection.end();} catch(e){}}, connectionLive);
+    
     //console.log("user: "+user+" has new connection");
-    users[user].push({request: request, response: response, ip: ip, id: id[1]});
+    users[user].push({request: request, response: response, ip: ip, id: id[1], timeout: timeout});
     
     request.connection.addListener('close', function () {
         console.log("closed connection");
-        response.end();
+        try { clearTimeout(timeout); } catch(e) {}
         refreshUserListeners();
     });
     request.connection.addListener('timeout', function () {
         console.log("timed out connection");
+        try { clearTimeout(timeout); } catch(e) {}
         response.end();
-        refreshUserListeners();
+        response.connection.end();
+        refreshUserListeners(); //should be called in close but what the heck, why not        
     });
         
-    request.connection.setTimeout(connectionLive);
+    request.connection.setTimeout(connectionLive+10000); //timeout after 10 more seconds after when we should have timed out
     request.connection.setNoDelay(true);
     
     response.writeHead(200, {
@@ -184,9 +193,11 @@ function sendPostToUsers(request, response, user, post) {
                 	});*/
                     //send $ to signify that we are sending post
             		response.write("$"+post, 'utf8');
+                    try { clearTimeout(users[user][i].timeout); } catch(e) {}
             		response.end();
                 } catch (e) {
                     try {
+                        try { clearTimeout(users[user][i].timeout); } catch(e) {}
                         response.end();
                     } catch (e) {}
                 }
@@ -306,27 +317,24 @@ function refreshUserListeners() {
                         } catch (e){
                             var sent = false;
                         }
-                    	if (sent && response.connection && response.connection.writable && date.getTime() - request.socket._idleStart.getTime() > 900000) { //expire after 15 minutes
+                    	if (sent && response.connection && response.connection.writable && date.getTime() - request.socket._idleStart.getTime() > connectionLive+15000) { //expire 15 secs plus expire
                     		try {
                         		response.end();
-                                if (users[i][j].ip && accessedIPs[users[i][j].ip]) { accessedIPs[users[i][j].ip].streams--; };
-                                console.log("user: "+i+" expired connection");
-                                users[i].splice(j,1);
-                            } catch (e) {
-                                
-                            }
-                    	} else if (!sent || !response.connection || !response.connection.writable) { //if connection is closed
-                            try {
-                                response.end();
-                            } catch (e) {
-                                
-                            }
+                                response.connection.end();                                
+                            } catch (e) {}
+                            try { clearTimeout(users[i][j].timeout); } catch(e) {}
                             if (users[i][j].ip && accessedIPs[users[i][j].ip]) { accessedIPs[users[i][j].ip].streams--; };
-                            console.log("user: "+i+" broken connection");
+                            console.log("user: "+i+" expired connection");
+                            users[i].splice(j,1);
+                    	} else if (!sent || !response.connection || !response.connection.writable) { //if connection is closed                        
+                            try {                                
+                                response.end();
+                                response.connection.end();
+                            } catch (e) {}
+                            try { clearTimeout(users[i][j].timeout); } catch(e) {}
+                            if (users[i][j].ip && accessedIPs[users[i][j].ip]) { accessedIPs[users[i][j].ip].streams--; };
+                            //console.log("user: "+i+" broken connection"); //called all the time now when we time out
                     	    users[i].splice(j,1);
-                    	} else {
-                    	   //console.log(response);
-                           //console.log(response.connection);
                     	}
                      }
                 }
