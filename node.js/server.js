@@ -1,40 +1,41 @@
-
-var users = {};
 var nextClientId = 1 //1 is our next id
-var serverStartTime = (new Date()).getTime(); //store start time so that we don't mix serverIds
-var usersLastUpdated = {};
+var serverStartTime = Math.round((new Date()).getTime()/1000); //store start time so that we don't mix serverIds
 var url = require('url');
 var sys = require('util');
 
-var userListeningLimit = 8; //max of 8 listeners per key
-var connectionLive = 1500000; //25 mins 
+//constants
+var connectionLive = 1500000; //25 mins
+var ipStreamLimit = 6;
 
 function checkUser(request, response, user, ip) {
-    //no sent user
-    if (!user) {
+    try {
+        if (users.getUser(user)) {
+            return true;
+        }
+    } catch (e) {
         if (ip && accessedIPs[ip]) { accessedIPs[ip].notFound++; }
-        response.writeHead(400, {
+        response.completeWrite(400, {
 			'Content-Type' : 'text/plain',
 			'Access-Control-Allow-Origin' : '*'
-		});
-		response.write('invalid_token', 'ascii');
-		response.end();
+		}, e, 'ascii');
         return false;
     }
-    
-    //no user is known for that token,
-    if (!users[user]) {
-        if (ip && accessedIPs[ip]) { accessedIPs[ip].notFound++; }
-        response.writeHead(200, {
-			'Content-Type' : 'text/plain',
-			'Access-Control-Allow-Origin' : '*'
-		});
-		response.write('invalid_token', 'ascii');
-		response.end();
-        return false;
-    }
-    return true;
 }
+
+function checkUserExists(request, response, user, ip) {
+    if (checkUser(request, response, user, ip)) {
+        response.completeWrite(200, {
+    		'Content-Type' : 'text/plain',
+    		'Access-Control-Allow-Origin' : '*'
+    	}, "ok", 'ascii');
+        return true;
+    }
+}
+
+/* 
+response should be our own version of response
+if not, everything SHOULD still work
+*/
 
 function waitForUpdate(request, response, user, ip) {
 
@@ -42,108 +43,111 @@ function waitForUpdate(request, response, user, ip) {
         return false;
     }
     
-    if (users[user].length > userListeningLimit) {
-        //kill off the first connection and tell client too many
-        console.log("user: "+user+" hit too many connections");
-        oldRes = users[user].shift();
-        if (oldRes && oldRes.writable) {
-            oldRes.writeHead(200, {
-    			'Content-Type' : 'text/plain',
-    			'Access-Control-Allow-Origin' : '*'
-    		});
-    		oldRes.write('too_many', 'ascii');
-    		oldRes.end();
-        }
-    }
-    
-    //check for server IDs
-    if (request.headers['cb-serverid'] == 0 || request.headers['cb-serverid'].indexOf("-")<6) {
-        response.writeHead(201, {
-			'Content-Type' : 'text/plain',
-			'Access-Control-Allow-Origin' : '*'
-		});
-		response.write(serverStartTime+'-'+nextServerId++, 'ascii');
-		response.end();
-        return false;
-    } else if (request.headers['cb-serverid']) {
-        var id = request.headers['cb-serverid'].split("-");
-        if (id[0] != serverStartTime || !id[1]) { //we got an old id or bad id
-            response.writeHead(201, {
-    			'Content-Type' : 'text/plain',
-    			'Access-Control-Allow-Origin' : '*'
-    		});
-    		response.write(serverStartTime+'-'+(nextClientId++), 'ascii');
-    		response.end();
-            return false;
-        } else {
-            //check to see id we already have this id as an active connection and close if so
-            for(var i in users[user]) {
-                if (users[user][i].id == id[1]) {
-                    //hmmmm should we do a setTimeout here?
-                    console.log("closing old connection from user: "+user+" with id: "+id);
-                    try {
-                        users[user][i].response.end();
-                        users[user][i].response.connection.end();
-                    } catch (e) {}
-                    if (users[user][i].ip && accessedIPs[users[user][i].ip]) { accessedIPs[users[user][i].ip].streams--; };
-                    users[user].splice(i,1);
-                }
-            }
-        }
-    } else {
-        response.writeHead(400, {
-			'Content-Type' : 'text/plain',
-			'Access-Control-Allow-Origin' : '*'
-		});
-		response.write('invalid headers', 'ascii');
-		response.end();
-        return false;
-    }
-    
-    if (accessedIPs[ip].streams >= 5) {
-        console.log("user: "+user+" on ip: "+ip+" hit too many streams");
-        response.writeHead(403, {
-			'Content-Type' : 'text/plain',
-			'Access-Control-Allow-Origin' : '*'
-		});
-		response.write('too many streams', 'ascii');
-		response.end();
-        return false;
-    }
-            
-    accessedIPs[ip].streams++;
-    
-    //gracefully (not really) close the connection after x amount of time
-    //by gracefully I mean, don't let the OS handle it
-    //by not that graceful, I mean we call response.connection.end() in order to get the close event to call
-    var timeout = setTimeout(function() {try {response.end();response.connection.end();} catch(e){}}, connectionLive);
-    
-    //console.log("user: "+user+" has new connection");
-    users[user].push({request: request, response: response, ip: ip, id: id[1], timeout: timeout});
-    
-    request.connection.addListener('close', function () {
-        console.log("closed connection");
-        try { clearTimeout(timeout); } catch(e) {}
-        refreshUserListeners();
-    });
-    request.connection.addListener('timeout', function () {
-        console.log("timed out connection");
-        try { clearTimeout(timeout); } catch(e) {}
-        response.end();
-        response.connection.end();
-        refreshUserListeners(); //should be called in close but what the heck, why not        
-    });
+    try {
+        //gracefully (not really) close the connection after x amount of time
+        //by gracefully I mean, don't let the OS handle it
+        //by not that graceful, I mean we call response.connection.end() in order to get the close event to call
         
-    request.connection.setTimeout(connectionLive+10000); //timeout after 10 more seconds after when we should have timed out
-    request.connection.setNoDelay(true);
+        var timeout = setTimeout(function() {
+            try {
+                response.end(true);
+            } catch(e){
+                try { //fall back to trying normal response
+                    response.end();
+                    response.connection.end();
+                }catch (f) {}
+            }
+        }, connectionLive);
+        
+        users.addListenRequest(user, {request: request, response: response, ip: ip, timeout: timeout}, request.headers['cb-serverid']);
+    } catch(e) {
+        switch (e) {
+            case "too_many_listens":
+                console.log("user: "+user+" hit too many connections");
+                response.completeWrite(400, {
+        			'Content-Type' : 'text/plain',
+        			'Access-Control-Allow-Origin' : '*'
+        		}, 'too_many_listens', 'ascii');
+                return false;
+            break
+            case "new_id_required":
+                //if someone is making a lot of new ids, wtf
+                if (ip && accessedIPs[ip]) { accessedIPs[ip].newID++; }
+                response.completeWrite(201, {
+        			'Content-Type' : 'text/plain',
+        			'Access-Control-Allow-Origin' : '*'
+        		}, serverStartTime+'-'+nextClientId++, 'ascii');
+                return false;
+            break
+            case "invalid_id":
+                response.completeWrite(400, {
+        			'Content-Type' : 'text/plain',
+        			'Access-Control-Allow-Origin' : '*'
+        		}, 'invalid headers', 'ascii');
+                return false;
+            break
+            case "too_many_ip_streams":
+                console.log("user: "+user+" on ip: "+listener.ip+" hit too many streams");
+                response.completeWrite(403, {
+        			'Content-Type' : 'text/plain',
+        			'Access-Control-Allow-Origin' : '*'
+        		}, 'too_many_listens', 'ascii');
+                return false;
+            break
+            default:
+                console.log("could not initiate listen for user: "+user+" error: "+e);
+                response.completeWrite(500, {
+        			'Content-Type' : 'text/plain',
+        			'Access-Control-Allow-Origin' : '*'
+        		}, 'could_not_initiate_listen', 'ascii');
+                return false;
+            break            
+        }
+        return false;
+    }
     
-    response.writeHead(200, {
-		'Content-Type' : 'text/plain',
-		'Access-Control-Allow-Origin' : '*'
-	});
-	response.write("-", 'utf8');
+    try {
+        request.connection.addListener('close', function () {
+            console.log("closed connection");
+            try { clearTimeout(timeout); } catch(e) {}
+            users.refreshUserListeners();
+        });
+        request.connection.addListener('timeout', function () {
+            console.log("timed out connection");
+            try { clearTimeout(timeout); } catch(e) {}
+            response.end(true);
+            users.refreshUserListeners(); //should be called in close but what the heck, why not        
+        });
+            
+        request.connection.setTimeout(connectionLive+10000); //timeout after 10 more seconds after when we should have timed out
+        request.connection.setNoDelay(true);
+        
+        response.writeHead(200, {
+    		'Content-Type' : 'text/plain',
+    		'Access-Control-Allow-Origin' : '*'
+    	});
+    	response.write("-", 'utf8');
+    } catch (e) {
+        response.end();
+        users.refreshUserListeners();
+    }
+    
+    
     
     return true;
+}
+
+function minusStreamForIP(ip) {
+    if (ip && accessedIPs[ip]) {
+        accessedIPs[ip].streams--; 
+    }
+}
+
+function addStreamForIP(ip) {
+    if (accessedIPs[ip].streams >= ipStreamLimit) {
+        throw "too_many_ip_streams";
+    }
+    accessedIPs[ip].streams++;
 }
 
 function sendPostToUsers(request, response, user, post) {
@@ -152,196 +156,93 @@ function sendPostToUsers(request, response, user, post) {
         return false;
     }
     
-    if (!post) {
-        response.writeHead(400, {
+    try {
+        if (!post) {
+            response.completeWrite(400, {
+    			'Content-Type' : 'text/plain',
+    			'Access-Control-Allow-Origin' : '*'
+    		}, 'invalid_post', 'ascii');
+            return false;
+        }
+    } catch (e) {
+        return false;
+    }
+    try {
+        users.newPost(user, post);
+        
+        //make sure we respond to post
+        response.completeWrite(200, {
+    		'Content-Type' : 'text/plain',
+    		'Access-Control-Allow-Origin' : '*'
+    	}, 'sending', 'ascii');
+        return true;
+    } catch (e) {
+        console.log("could not post to user: "+user+" with post: "+post+"\n because: "+e);
+        response.completeWrite(500, {
 			'Content-Type' : 'text/plain',
 			'Access-Control-Allow-Origin' : '*'
-		});
-		response.write('invalid_post', 'ascii');
-		response.end();
+		}, e, 'ascii');
         return false;
     }
     
-    //make sure we respond to post
-    response.writeHead(200, {
-		'Content-Type' : 'text/plain',
-		'Access-Control-Allow-Origin' : '*'
-	});
-	response.write('sending', 'ascii');
-	response.end();
-    
-    usersLastUpdated[user] = Math.round(new Date().getTime() / 1000);
-    
-    for(var i in users[user]) {
-        response = users[user][i].response;
-        //make sure we have a response
-        if (!response) {
-            console.log("no response for user: "+user+" listen: "+i);
-            if (users[user][i].ip && accessedIPs[users[user][i].ip]) { accessedIPs[users[user][i].ip].streams--; };
-            users[user].splice(i,1);
-        } else {
-            if (!response.connection || !response.connection.writable) {
-                console.log("could not respond to user: "+user+" listen: "+i);
-                if (users[user][i].ip && accessedIPs[users[user][i].ip]) { accessedIPs[users[user][i].ip].streams--; };
-                users[user].splice(i,1);
-            } else {
-                console.log("responding to user: "+user+" listen: "+i);
-                try {
-                    /*response.writeHead(200, {
-                		'Content-Type' : 'text/plain',
-                		'Access-Control-Allow-Origin' : '*'
-                	});*/
-                    //send $ to signify that we are sending post
-            		response.write("$"+post, 'utf8');
-                    try { clearTimeout(users[user][i].timeout); } catch(e) {}
-            		response.end();
-                } catch (e) {
-                    try {
-                        try { clearTimeout(users[user][i].timeout); } catch(e) {}
-                        response.end();
-                    } catch (e) {}
-                }
-                if (users[user][i].ip && accessedIPs[users[user][i].ip]) { accessedIPs[users[user][i].ip].streams--; };
-                users[user].splice(i,1); //delete the server now that we wrote to it
-                console.log("responses sent!");
-            }
-        }
-    }
-    return true;
 }
 
 function getLastUpdatedForUser(request, response, user, ip) {
     
     if (!checkUser(request, response, user, ip)) {
         return false;
-    }
-    
-    if (usersLastUpdated[user]) {
-        response.writeHead(200, {
+    }    
+    try {
+        var time = users.getLastUpdated(user);
+        if (time) {
+            response.completeWrite(200, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, time.toString(), 'utf8');
+            return true;
+        } else {
+            response.completeWrite(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, "no_time", 'ascii');
+            return false;
+        }
+    } catch (e) {
+    	response.completeWrite(500, {
     		'Content-Type' : 'text/plain',
     		'Access-Control-Allow-Origin' : '*'
-    	});
-		response.write(usersLastUpdated[user].toString(), 'utf8');
-		response.end();
-        return true;
-    } else {
-        var client = http.createClient(80, '74.117.157.221');
-        client.on('timeout', function() {
-        	response.writeHead(500, {
-        		'Content-Type' : 'text/plain',
-        		'Access-Control-Allow-Origin' : '*'
-        	});
-    		response.write('could not get time.', 'ascii');
-    		response.end();
-        });
-        client.on('error', function(err) {
-            response.writeHead(500, {
-        		'Content-Type' : 'text/plain',
-        		'Access-Control-Allow-Origin' : '*'
-        	});
-    		response.write('could not get time.', 'ascii');
-    		response.end();
-        });
-        var reqC = client.request('GET', '/lastUpdate.php?token='+user+'&version=2', {'host': 'cloudboard.jhartig.com'});
-        reqC.end();
-        try {
-            reqC.connection.setTimeout(2000);
-        } catch(e) {
-            console.log("cannot send timeout");
-        }
-        reqC.on('timeout', function() {
-        	response.writeHead(500, {
-        		'Content-Type' : 'text/plain',
-        		'Access-Control-Allow-Origin' : '*'
-        	});
-    		response.write('could not get time.', 'ascii');
-    		response.end();
-        });
-        reqC.on('response', function (resp) {
-            resp.setEncoding('utf8');
-            var body = "";
-            resp.on('data', function (chunk) {
-                body += chunk;
-            });
-            resp.on('end', function () {
-                if (resp.statusCode == 200) {
-                    usersLastUpdated[user] = parseInt(body);
-                    response.writeHead(200, {
-                		'Content-Type' : 'text/plain',
-                		'Access-Control-Allow-Origin' : '*'
-                	});
-            		response.write(body, 'ascii');
-            		response.end();
-                } else {
-                    response.writeHead(500, {
-                		'Content-Type' : 'text/plain',
-                		'Access-Control-Allow-Origin' : '*'
-                	});
-            		response.write('could not get time. Error: '+body, 'ascii');
-            		response.end();
-                }
-            });
-        });
-        return true;
+    	}, e, 'ascii');
     }
+    return false;
 }
 
-function checkUserExists(request, response, user, ip) {
-    if (checkUser(request, response, user, ip)) {
-        response.writeHead(200, {
+function getInboxForUser(request, response, user, ip) {
+    
+    if (!checkUser(request, response, user, ip)) {
+        return false;
+    }    
+    try {
+        var inbox = inboxes.getUserInbox(user);
+        if (inbox && JSON.stringify(inbox)) {
+            response.completeWrite(200, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, JSON.stringify(inbox), 'utf8');
+            return true;
+        } else {
+            response.completeWrite(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, "{}", 'ascii');
+            return false;
+        }
+    } catch (e) {
+    	response.completeWrite(500, {
     		'Content-Type' : 'text/plain',
     		'Access-Control-Allow-Origin' : '*'
-    	});
-		response.write("ok", 'ascii');
-		response.end();
-        return;
+    	}, e, 'ascii');
     }
-}
-
-//go through the users and kill off old connections
-function refreshUserListeners() {
-    var date = new Date();
-    for(var i in users) {
-        if (users[i] && users[i].length) {
-            for(var j in users[i]) {
-                if (users[i][j]) {
-                    var request = users[i][j].request;
-                    var response = users[i][j].response;
-                    //make sure we have a request and response
-                    if (!request || !response) {
-                        if (users[i][j].ip && accessedIPs[users[i][j].ip]) { accessedIPs[users[i][j].ip].streams--; };
-                        users[i].splice(j,1);
-                    } else {
-                        try {
-                            var sent = response.write("-", 'utf8');
-                        } catch (e){
-                            var sent = false;
-                        }
-                    	if (sent && response.connection && response.connection.writable && date.getTime() - request.socket._idleStart.getTime() > connectionLive+15000) { //expire 15 secs plus expire
-                    		try {
-                        		response.end();
-                                response.connection.end();                                
-                            } catch (e) {}
-                            try { clearTimeout(users[i][j].timeout); } catch(e) {}
-                            if (users[i][j].ip && accessedIPs[users[i][j].ip]) { accessedIPs[users[i][j].ip].streams--; };
-                            console.log("user: "+i+" expired connection");
-                            users[i].splice(j,1);
-                    	} else if (!sent || !response.connection || !response.connection.writable) { //if connection is closed                        
-                            try {                                
-                                response.end();
-                                response.connection.end();
-                            } catch (e) {}
-                            try { clearTimeout(users[i][j].timeout); } catch(e) {}
-                            if (users[i][j].ip && accessedIPs[users[i][j].ip]) { accessedIPs[users[i][j].ip].streams--; };
-                            //console.log("user: "+i+" broken connection"); //called all the time now when we time out
-                    	    users[i].splice(j,1);
-                    	}
-                     }
-                }
-            }
-        }
-    }
-    
+    return false;
 }
 
 function getIP(req) {
@@ -407,6 +308,13 @@ function checkIP(ip) {
             }
             accessedIPs[ip].timer = setTimeout(function() {delete accessedIPs[ip];}, 3600000); //one hour blocked
             return 3;
+        } else if (accessedIPs[ip].newID > 36) {
+            accessedIPs[ip].blocked = true;
+            if (accessedIPs[ip].timer) {
+                clearTimeout(accessedIPs[ip].timer);
+            }
+            accessedIPs[ip].timer = setTimeout(function() {delete accessedIPs[ip];}, 3600000); //one hour blocked
+            return 3;
         } else if ((time-accessedIPs[ip].time)/1000 > 4 && accessedIPs[ip].connections/((time-accessedIPs[ip].time)/1000)*60 > 50) { //more than 50 a minute
             accessedIPs[ip].blocked = true;
             if (accessedIPs[ip].timer) {
@@ -418,174 +326,244 @@ function checkIP(ip) {
             return 1;
         }
     } else {
-        accessedIPs[ip] = {connections: 1, notFound: 0, streams: 0, blocked: false, time: time};
+        accessedIPs[ip] = {connections: 1, notFound: 0, streams: 0, blocked: false, time: time, newID: 0};
         accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, connectionLive); //clear ip in 15 mins
         return 1;
     }
 }
 
-
-/*
-generate a list of users from the server
-*/
-var lastUserCheck = 0;
-var userFile = '/srv/www/cloudboard/data/users';
-var fs = require("fs");
-function getUsers(callback) {
-    fs.stat(userFile, function(err, stats) {
-        //make sure that we need to read
-    	if (stats.mtime.getTime() > lastUserCheck) {
-    	    //actually read file
-    		fs.readFile(userFile, 'utf8', function(err, data) {    			
-                //parse file
-                var us = data.split("\n");
-                if (us && us.length) {
-                    var count = 0;
-                    for (var i in us) {
-                        if (us) {
-                            var uid = us[i].split(":")[0];
-                            var auth = us[i].split(":")[1];
-                            if (auth && !users[auth]) { //only add new ones
-                                users[auth] = [];
-                                //usersLastUpdated[auth] = 0;
-                                count++;
-                            }
-                        }
-                    }
-                    console.log("added "+count+" new users."); //users.length is undefined?
-                    lastUserCheck = (new Date()).getTime();
-                }
-                if (callback) {
-                    callback();
-                }
-    			return;
-    		});
-    	}        
-    });
-}
-
-var http = require('http');
-
-//don't start server until done loading users
-getUsers(function() {
-    http.createServer(function (request, response) {
-        var body = "",
-            urlParts = url.parse(request.url, true),
-            ip = getIP(request);
-        
-        switch(checkIP(ip)) {
-            case 3:
-                console.log("* blocked remote connection from "+ip+" on "+request.url);
-                response.writeHead(403, {
-        			'Content-Type' : 'text/plain',
-        			'Access-Control-Allow-Origin' : '*'
-        		});
-        		response.write('blocked', 'ascii');
-        		response.end();
-                return;
-            break
-        }
-        
-        console.log("Connection from "+ip+" on "+request.url);
-        var process = function(e) {
-            
-            if (e) {
-                //we got an error
-                response.writeHead(500, {
-        			'Content-Type' : 'text/plain',
-        			'Access-Control-Allow-Origin' : '*'
-        		});
-        		response.write('error', 'ascii');
-        		response.end();
-                return;
+function betterResponse(resp, stTime) {
+    this.startTime = stTime;
+    this.connection = resp.connection;
+    this.socket = resp.socket;
+    this.response = resp;
+    this.canWrite = true; //unset on end()
+    this.headSent = false;
+    this.writable = function() {
+        return this.canWrite && this.response.connection && this.response.connection.writable;
+    };
+    
+    //does everything
+    this.completeWrite = function (status, headers, message, locale) {
+        try {
+            if (this.response) {
+                this.response.writeHead(status, headers);
+                this.headSent = true;
+                this.write(message, locale);
+                this.end();
             }
+        } catch (e) {
+            throw e;
+        }
+    };
+    
+    this.writeHead = function(status, headers) {
+        try {
+            if (this.response) {
+                this.response.writeHead(status, headers);
+                this.headSent = true;
+            }
+        } catch (e) {
+            throw e;
+        }
+    };
+    
+    this.write = function(data, locale) {
+        try {
+            if (this.response) {
+                this.response.write(data, locale);
+            }
+        } catch (e) {
+            throw e;
+        }
+    };
+    
+    this.end = function(force) {
+        try {
+            if (this.response) {
+                this.response.end();
+                if (force && this.connection) this.connection.end();
+            }
+            this.canWrite = false;
+        } catch (e) {
+            throw e;
+        }
+    };   
+};
+
+var fs = require("fs");
+var http = require('http');
+//following needed for inboxes to copy a file
+var sys  = require('sys'),
+exec  = require('child_process').exec;
+var users;
+var inboxes; //establish outside of onUsersLoad
+var extension = false;
+
+console.log('Initializing Server...');
+
+var onUsersLoad = function () {
+    //don't start server until done loading inboxes
+    var onInboxLoad = function() {
+        http.createServer(function (request, response) {
+            var body = "",
+                urlParts = url.parse(request.url, true),
+                ip = getIP(request);
             
-            switch (urlParts.pathname.toLowerCase()) {
-                case "/lastupdated":
-                    var user = (urlParts.query ? urlParts.query.token : false);
-                    getLastUpdatedForUser(request, response, user, ip);
-                break
-                case "/listen":
-                    var user = (urlParts.query ? urlParts.query.token : false);
-                    waitForUpdate(request, response, user, ip);
-                break
-                case "/checkuser":
-                    var user = (urlParts.query ? urlParts.query.token : false);
-                    checkUserExists(request, response, user, ip);
-                default:
-                    accessedIPs[ip].notFound++;
-                    response.writeHead(404, {
+            switch(checkIP(ip)) {
+                case 3:
+                    console.log("* blocked remote connection from "+ip+" on "+request.url);
+                    response.writeHead(403, {
             			'Content-Type' : 'text/plain',
             			'Access-Control-Allow-Origin' : '*'
             		});
-            		response.write('not found', 'ascii');
+            		response.write('blocked', 'ascii');
             		response.end();
-                break;
+                    response.connection.end();
+                    return;
+                break
             }
-            return;
-        };
-        request.setEncoding('utf8');
-        request.addListener('data', function (chunk) {
-            body += chunk;
-        });
-        request.addListener('end', function () {
-            process(null);
-        });
-    }).listen(80, "74.117.157.34");
-    console.log('Server running on 74.117.157.34:80');
-    
-    http.createServer(function (request, response) {
-        var body = "",
-            urlParts = url.parse(request.url, true);
-        console.log("got local connection on "+request.url);
-        var process = function(e) {
             
-            if (e) {
-                //we got an error
-                response.writeHead(500, {
-        			'Content-Type' : 'text/plain'
-        		});
-        		response.write('error', 'ascii');
-        		response.end();
+            
+            
+            console.log("Connection from "+ip+" on "+request.url);
+            var process = function(e) {
+                
+                if (e) {
+                    //we got an error
+                    response.writeHead(500, {
+            			'Content-Type' : 'text/plain',
+            			'Access-Control-Allow-Origin' : '*'
+            		});
+            		response.write('error', 'ascii');
+            		response.end();
+                    response.connection.end();
+                    return;
+                }
+                
+                response = new betterResponse(response, request.socket._idleStart.getTime());       
+                
+                switch (urlParts.pathname.toLowerCase()) {
+                    case "/lastupdated":
+                        var user = (urlParts.query ? urlParts.query.token : false);
+                        getLastUpdatedForUser(request, response, user, ip);
+                    break
+                    case "/inbox":
+                        var user = (urlParts.query ? urlParts.query.token : false);
+                        getInboxForUser(request, response, user, ip);
+                    break
+                    case "/listen":
+                        var user = (urlParts.query ? urlParts.query.token : false);
+                        waitForUpdate(request, response, user, ip);
+                    break
+                    case "/checkuser":
+                        var user = (urlParts.query ? urlParts.query.token : false);
+                        checkUserExists(request, response, user, ip);
+                    default:
+                        accessedIPs[ip].notFound++;
+                        response.completeWrite(404, {
+                			'Content-Type' : 'text/plain',
+                			'Access-Control-Allow-Origin' : '*'
+                		}, 'not found', 'ascii');
+                    break;
+                }
                 return;
+            };
+            try {
+                request.setEncoding('utf8');
+                request.addListener('data', function (chunk) {
+                    body += chunk;
+                });
+                request.addListener('end', function () {
+                    process(null);
+                });
+            } catch(e) {
+                console.log("request issue error: "+e);
+                try {
+                    response.writeHead(500, {
+            			'Content-Type' : 'text/plain',
+            			'Access-Control-Allow-Origin' : '*'
+            		});
+            		response.write('error', 'ascii');
+            		response.end();
+                    response.connection.end();
+                } catch (f) {}
             }
+        }).listen(8080);
+        //"74.117.157.34"
+        //iptables -t nat -A PREROUTING -p tcp --dport 80 -d {ip} -j REDIRECT --to-port 8080
+        console.log('Server running on 74.117.157.34:8080');
+        
+        http.createServer(function (request, response) {
+            var body = "",
+                urlParts = url.parse(request.url, true);
+            console.log("got local connection on "+request.url);
             
-            request.connection.setTimeout(2000);
-            
-            switch (urlParts.pathname.toLowerCase()) {
-                case "/post":
-                    var user = (urlParts.query ? urlParts.query.token : false);
-                    console.log("got post to user: "+user+" with "+body);
-                    sendPostToUsers(request, response, user, body);
-                break
-                case "/newuser":
-                    getUsers()
-                    response.writeHead(200, {
+            var process = function(e) {
+                
+                if (e) {
+                    //we got an error
+                    response.writeHead(500, {
             			'Content-Type' : 'text/plain'
             		});
-            		response.write('ok', 'ascii');
+            		response.write('error', 'ascii');
             		response.end();
-                break
-                default:
-                    response.writeHead(404, {
-            			'Content-Type' : 'text/plain'
+                    return;
+                }
+                
+                request.connection.setTimeout(2000);
+                
+                response = new betterResponse(response, request.socket._idleStart.getTime());
+                                
+                switch (urlParts.pathname.toLowerCase()) {
+                    case "/post":
+                        var user = (urlParts.query ? urlParts.query.token : false);
+                        console.log("got post to user: "+user+" with "+body);
+                        sendPostToUsers(request, response, user, body);
+                    break
+                    case "/newuser":
+                        getUsers()
+                        response.completeWrite(200, {
+                			'Content-Type' : 'text/plain'
+                		}, 'ok', 'ascii');
+                    break
+                    default:
+                        response.completeWrite(404, {
+                			'Content-Type' : 'text/plain'
+                		}, 'not found', 'ascii');
+                    break;
+                }
+                return;
+            };
+            try {
+                request.setEncoding('utf8');
+                request.addListener('data', function (chunk) {
+                    body += chunk;
+                });
+                request.addListener('end', function () {
+                    process(null);
+                });
+            } catch(e) {
+                console.log("request issue error: "+e);
+                try {
+                    response.writeHead(500, {
+            			'Content-Type' : 'text/plain',
+            			'Access-Control-Allow-Origin' : '*'
             		});
-            		response.write('not found', 'ascii');
+            		response.write('error', 'ascii');
             		response.end();
-                break;
+                    response.connection.end();
+                } catch (f) {}
             }
-            return;
-        };
-        request.setEncoding('utf8');
-        request.addListener('data', function (chunk) {
-            body += chunk;
-        });
-        request.addListener('end', function () {
-            process(null);
-        });
-    }).listen(8100, "127.0.0.1");
-    console.log('Local Server running on 127.0.0.1:8100');
-    
-    setInterval(refreshUserListeners, 3000);
-    
-});
+        }).listen(8100, "127.0.0.1");
+        console.log('Local Server running on 127.0.0.1:8100');
+        
+    };
+    //require("./inboxes");
+    var inboxFile = fs.readFileSync("./inboxes.js", 'ascii');
+    eval(inboxFile);
+};
+
+var userFile = fs.readFileSync("./users.js", 'ascii');
+eval(userFile);
+//require("./users");

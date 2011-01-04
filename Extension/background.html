@@ -120,7 +120,7 @@
            if ((state == "idle" || state == "locked") && !idle) {
                //don't abort connection
                idle = true;
-               console.error("connection aborted because computer is idle");
+               console.error("computer is idle not opening anymore connections");
            } else if (state == "active" && idle && !openConnection) { //they are back
                idle = false;
                console.log("connection reopened after not idle");
@@ -153,23 +153,26 @@
     var serverID = (localStorage.getItem("com.jhartig.cloudboard.serverID") ? localStorage.getItem("com.jhartig.cloudboard.serverID") : 0);
     
     var errors = 0;
+    
+    var lastTime = 0;
 
     function openServerConnection() {
         if (!openConnection && !idle && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1) {
-            console.log("Opening long polling connection");
             aborted = false;
             disconnectedOnIdle = false;
             if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
-      		    try {
+      		    console.log("Opening long polling connection");
+                  try {
                     openConnection = new XMLHttpRequest();
             		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
-            		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+            		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1&lasttime="+lastTime, true);
                     //openConnection.setRequestHeader("Connection", "close");
                     openConnection.setRequestHeader("CB-ServerID", serverID);
                     openConnection.send();
                     if (timeout) { clearTimeout(timeout); }
-                    timeout = setTimeout(checkConnectionStatus, 1560000); //close connection after 26 minutes (1560000)
-                    //server should timeout around 15 minutes
+                    timeout = setTimeout(clearErrors, 300000); //clear errors if we are still loading after 5 minutes
+                    
+                    //server should timeout around 25 minutes
                     
                     //if (interval) { clearInterval(interval); }
                     //interval = setInterval(getPartialResponse, 1000);
@@ -188,6 +191,7 @@
 		if (xhr.readyState == 4) {
 			var resp = xhr.responseText;
             openConnection = false;
+            lastTime = new Date().getTime();
             if (interval) { clearInterval(interval); }
             if (xhr.responseText == "invalid_token") {
                 clearErrors();
@@ -214,7 +218,7 @@
                                 inboxCache.pop();
                             }
                             localStorage.setItem("com.jhartig.cloudboard.inboxCache", JSON.stringify(inboxCache));
-                            localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
+                            localStorage.setItem("com.jhartig.cloudboard.lastUpdated", new Date().getTime()); //get unix timestamp
                             if (resp.text != lastPaste) {
                                 if (localStorage.getItem("com.jhartig.cloudboard.notifications") != 0) {
                                     var notification = webkitNotifications.createNotification(
@@ -240,7 +244,8 @@
                 errors++;
                 if (xhr.responseText) { console.error("received error: ", xhr.responseText); }
                 clearTimeout(timeout);
-                if (xhr.responseText == "too many streams") { //shouldn't happen anymore
+                if (xhr.responseText == "too_many_listens") { //shouldn't happen anymore
+                    clearErrors();
                     if (localStorage.getItem("com.jhartig.cloudboard.notifications") != 0) {
                         var notification = webkitNotifications.createNotification(
                           'icon48.png',
@@ -251,6 +256,7 @@
                     }
                     setTimeout(openServerConnection, 300000);
                 } else if (xhr.responseText == "blocked") { //should never happen
+                    clearErrors();
                     if (localStorage.getItem("com.jhartig.cloudboard.notifications") != 0) {
                         var notification = webkitNotifications.createNotification(
                           'icon48.png',
@@ -261,6 +267,7 @@
                     }
                     setTimeout(openServerConnection, 300000);
                 } else if (xhr.responseText == "upgrade required") {
+                    clearErrors();
                     var notification = webkitNotifications.createNotification(
                       'icon48.png',
                       'Upgrade Required',
@@ -311,8 +318,10 @@
                 clearTimeout(timeout);
                 clearErrors();
                 aborted = true; //tell us not to restart automatically on error
-                openConnection.abort();
-                openConnection = false;
+                if (openConnection) {
+                    openConnection.abort();
+                    openConnection = false;
+                }
                 console.error("connection aborted because of new token");
                 disconnectedOnIdle = false;
                 setTimeout(openServerConnection, 500);
@@ -359,6 +368,7 @@
                 callback("invalid_token");
             } else {
                 var time = parseInt(resp);
+                console.log("got updated: "+time);
                 if (!time || time > parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))) {
                     callback(true);
                 } else {
@@ -372,7 +382,7 @@
 	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
             var xhr = new XMLHttpRequest();
     		xhr.onreadystatechange = function (xhr) { handleInboxResponse(xhr, callback); };
-    		xhr.open("GET", "http://cloudboard.jhartig.com/inbox.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+    		xhr.open("GET", "http://74.117.157.34/inbox?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
     		xhr.send();
        } else {
             if (callback) {
@@ -393,31 +403,34 @@
                     callback("invalid_token");
                 }
             } else {
-                localStorage.setItem("com.jhartig.cloudboard.lastUpdated", Math.round(new Date().getTime() / 1000)); //get unix timestamp
+                localStorage.setItem("com.jhartig.cloudboard.lastUpdated", new Date().getTime()); //get unix timestamp
                 localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
                 try {
                     resp = JSON.parse(resp);
-                } catch (e) {}
-                if (callback) {
-                    callback(resp);
-                }
+                    if (callback) {
+                        callback(resp);
+                    }
+                } catch (e) {
+                    console.error('cannot parse inbox: '+e);
+                }                
             }
 		}
 	}
     
     function getInboxFromCache(callback) {
         //make sure we get the data from the server now
-        var time = Math.round(new Date().getTime() / 1000);
+        var time = new Date().getTime();
         if (errors > 5 && time <= parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))+2) { // if we got it 1 second ago, we are fine
             getInboxFromServerIfUpdated(callback);
         } else {
             var resp = localStorage.getItem("com.jhartig.cloudboard.inboxCache");
             try {
                 resp = JSON.parse(resp);
+                callback(resp);
             } catch (e) {
+                console.error('cannot parse inbox: '+e);
                 getInboxFromServerIfUpdated(callback);
-            }
-            callback(resp);
+            }            
         }
     }
     
