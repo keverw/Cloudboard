@@ -424,7 +424,7 @@ var users;
 var inboxes; //establish outside of onUsersLoad
 var extension = false;
 
-console.log('Initializing Server...');
+console.log('===================================================\nCloudboard Node.js Server\n===================================================\nInitializing Server...');
 
 var onUsersLoad = function () {
     //don't start server until done loading inboxes
@@ -555,7 +555,7 @@ var onUsersLoad = function () {
                         sendPostToUsers(request, response, user, body);
                     break
                     case "/newuser":
-                        getUsers()
+                        users.getUsersFromStorage();
                         response.completeWrite(200, {
                 			'Content-Type' : 'text/plain'
                 		}, 'ok', 'ascii');
