@@ -138,7 +138,7 @@ users = {
                 throw "invalid_post";
             }
             
-            inboxes.storeNewPost(user, postObj);            
+            var resp = inboxes.storeNewPost(user, postObj);            
             this.users[user].lastUpdated = (new Date()).getTime();
             
             var cnt = 0;
@@ -187,6 +187,7 @@ users = {
             console.log("post not made for user: "+user+" because of: "+e);
             throw e;
         }
+        return resp;
     },
     
     //go through the users and kill off old connections

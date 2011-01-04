@@ -168,13 +168,16 @@ function sendPostToUsers(request, response, user, post) {
         return false;
     }
     try {
-        users.newPost(user, post);
-        
+        var resp = users.newPost(user, post);
+        if (typeof resp != "string") {
+            console.log("wtf "+ resp);
+            
+        }
         //make sure we respond to post
         response.completeWrite(200, {
     		'Content-Type' : 'text/plain',
     		'Access-Control-Allow-Origin' : '*'
-    	}, 'sending', 'ascii');
+    	}, resp, 'ascii');
         return true;
     } catch (e) {
         console.log("could not post to user: "+user+" with post: "+post+"\n because: "+e);
@@ -289,6 +292,7 @@ function deleteIPCheck(ip) {
         delete accessedIPs[ip];
     } else {
         accessedIPs[ip].connections = 1;
+        accessedIPs[ip].newID = 0;
         accessedIPs[ip].time = (new Date()).getTime();
         accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, connectionLive); //try again in 15 mins
     }
@@ -302,6 +306,7 @@ function checkIP(ip) {
             return 3;
         }
         if (accessedIPs[ip].notFound > 4) {
+            console.log("too many not founds for: "+ip);
             accessedIPs[ip].blocked = true;
             if (accessedIPs[ip].timer) {
                 clearTimeout(accessedIPs[ip].timer);
@@ -309,13 +314,15 @@ function checkIP(ip) {
             accessedIPs[ip].timer = setTimeout(function() {delete accessedIPs[ip];}, 3600000); //one hour blocked
             return 3;
         } else if (accessedIPs[ip].newID > 36) {
+            console.log("too many new IDs for: "+ip);
             accessedIPs[ip].blocked = true;
             if (accessedIPs[ip].timer) {
                 clearTimeout(accessedIPs[ip].timer);
             }
             accessedIPs[ip].timer = setTimeout(function() {delete accessedIPs[ip];}, 3600000); //one hour blocked
             return 3;
-        } else if ((time-accessedIPs[ip].time)/1000 > 4 && accessedIPs[ip].connections/((time-accessedIPs[ip].time)/1000)*60 > 50) { //more than 50 a minute
+        } else if ((time-accessedIPs[ip].time)/1000 > 4 && accessedIPs[ip].connections/((time-accessedIPs[ip].time)/1000)*60 > 100) { //more than 100 a minute
+            console.log("too many new connections for: "+ip);
             accessedIPs[ip].blocked = true;
             if (accessedIPs[ip].timer) {
                 clearTimeout(accessedIPs[ip].timer);
@@ -329,6 +336,23 @@ function checkIP(ip) {
         accessedIPs[ip] = {connections: 1, notFound: 0, streams: 0, blocked: false, time: time, newID: 0};
         accessedIPs[ip].timer = setTimeout(function() {deleteIPCheck(ip);}, connectionLive); //clear ip in 15 mins
         return 1;
+    }
+}
+
+function createPostFromClient(text, query) {    
+    try {
+        var post = {};
+        if (!query.type) {
+            post.type = "txt";
+        } else {
+            post.type = query.type;
+        }
+        post.time = (new Date()).getTime();
+        post.text = text;
+        post = JSON.stringify(post);
+        return post;
+    } catch (e) {
+        return false;
     }
 }
 
@@ -441,23 +465,33 @@ var onUsersLoad = function () {
                     return;
                 }
                 
-                response = new betterResponse(response, request.socket._idleStart.getTime());       
-                
+                response = new betterResponse(response, request.socket._idleStart.getTime());   
+                    
+                var user = (urlParts.query ? urlParts.query.token : false);
                 switch (urlParts.pathname.toLowerCase()) {
                     case "/lastupdated":
-                        var user = (urlParts.query ? urlParts.query.token : false);
                         getLastUpdatedForUser(request, response, user, ip);
                     break
                     case "/inbox":
-                        var user = (urlParts.query ? urlParts.query.token : false);
                         getInboxForUser(request, response, user, ip);
                     break
                     case "/listen":
-                        var user = (urlParts.query ? urlParts.query.token : false);
                         waitForUpdate(request, response, user, ip);
                     break
-                    case "/checkuser":
-                        var user = (urlParts.query ? urlParts.query.token : false);
+                    case "/post":
+                        //need to create post
+                        var post = createPostFromClient(body, urlParts.query);
+                        //should return a string
+                        if (post) {
+                            sendPostToUsers(request, response, user, post);
+                        } else {
+                            response.completeWrite(400, {
+                    			'Content-Type' : 'text/plain',
+                    			'Access-Control-Allow-Origin' : '*'
+                    		}, 'invalid_post', 'ascii');
+                        }
+                    break
+                    case "/checkuser":                        
                         checkUserExists(request, response, user, ip);
                     default:
                         accessedIPs[ip].notFound++;
@@ -518,7 +552,6 @@ var onUsersLoad = function () {
                 switch (urlParts.pathname.toLowerCase()) {
                     case "/post":
                         var user = (urlParts.query ? urlParts.query.token : false);
-                        console.log("got post to user: "+user+" with "+body);
                         sendPostToUsers(request, response, user, body);
                     break
                     case "/newuser":

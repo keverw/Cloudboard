@@ -167,17 +167,34 @@ inboxes =
             } else if ((post.text).length < 1) {
                 throw "invalid_post";
             }
-                    
+            
+            //check for duplicate
+            var inbox = this.getUserInbox(user);
+            for(var i in inbox) {
+                if (inbox[i] && inbox[i].text == post.text) {
+                    if (i>0) {
+                        //move to the front
+                        this.inboxes.spliceItem(user, i, c);
+                        this.inboxes.unshiftItem(user, post);
+                        //will move it to the front but we will still alert everyone
+                    } else {
+                        inbox[i].time = post.time;
+                        //little hack
+                    }
+                    return 'dup';
+                }
+            }
+                                
             this.inboxes.unshiftItem(user, post); //add the new item
             if (this.inboxes.inboxLength(user) > this.maxInboxSize) {
                 this.inboxes.popInboxItem(user); //bye bye last item
             }
             
         } catch (e) {
-            throw "unknown error in inboxes.storeNewPost: "+e;
+            throw e;
         }
         //we are letting server handle the posting to listeners as we don't get request and such
-        return true;
+        return 'true';
     },
     
     /*

@@ -70,7 +70,7 @@
     		var params = data;
     		var xhr = new XMLHttpRequest();
     		xhr.onreadystatechange = function (xhr) { handleServerResponse(xhr, callback); };
-    		xhr.open("POST", "http://cloudboard.jhartig.com/post.php?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
+    		xhr.open("POST", "http://74.117.157.34/post?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
     		xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded"); //we need this for some reason
             xhr.send(params);
             lastPaste = data;
@@ -449,7 +449,6 @@
 	setupContexts();
 	openOptions();
     
-    getInboxFromServer(); //start off with a new inbox
     if (localStorage.getItem("com.jhartig.cloudboard.notifications") == null) {
         localStorage.setItem("com.jhartig.cloudboard.notifications", 1); //new users
     }    
