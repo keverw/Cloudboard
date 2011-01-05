@@ -35,6 +35,14 @@
             }
         }
         
+        function openSong(id, obj) {
+            chrome.extension.sendRequest({gsSong:id}, function(response){                
+                if (!response) {
+                    obj.parentNode.getElementsByTagName('span')[0].innerHTML = "Cannot play";
+                }                
+            });
+        }
+        
         function displayInbox(json) {
             if (json) {
                 var html = "<ul>";
@@ -44,6 +52,9 @@
                         case "img":
                         case "pg":
                             html += '<li><a href="'+json[i].text+'" onclick="openLink(this.href);return false;"><img src="openLink.png" /></a><textarea class="link" onclick="this.focus();fitContent(this,180);this.select();" onblur="fitContent(this,14);" rows="1" readonly="readonly";>'+json[i].text+'</textarea></li>';
+                        break
+                        case "gsSong":
+                            html += '<li><a href="#" onclick="openSong(\''+json[i].text+'\', this);return false;">Play Grooveshark Song</a><span></span></li>';
                         break
                         default:
                             html += '<li><textarea onclick="this.focus();fitContent(this,180);this.select();" onblur="fitContent(this,60);" rows="1" readonly="readonly";>'+json[i].text+'</textarea></li>';

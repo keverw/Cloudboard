@@ -180,6 +180,7 @@ inboxes =
                         //will move it to the front but we will still alert everyone
                     } else {
                         inbox[i].time = post.time;
+                        inbox[i].type = post.type;
                         //little hack
                     }
                     return 'dup';

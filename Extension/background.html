@@ -22,6 +22,14 @@
 			"onclick": getCopiedData
 		} );
         chrome.contextMenus.create( {
+			"title": "Copy Current Song to Cloudboard",
+			"contexts": ["page"],
+			"onclick": getGSSongData,
+            "documentUrlPatterns": ["http://listen.grooveshark.com/*"]
+		} );
+        
+        
+        chrome.contextMenus.create( {
 			"title": "Paste From Cloudboard",
 			"contexts": ["editable"],
 			"onclick": pasteEditableData
@@ -43,7 +51,6 @@
 			data = info.pageUrl;
 			type = "pg";
 		}
-        console.log("Pasting to server: "+data);
 		if (data) {
 			sendDataToServer(data, type, function (response) {
                 if (!response) {
@@ -52,6 +59,20 @@
 			});;
 		}
 	}
+    
+    function getGSSongData(info, tab) {
+        chrome.tabs.sendRequest(tab.id, 'gsSong', function (response) {
+            try {
+                if (response && response != "null" && response != "undefined" && response != "none" && response != "loading") {
+                    sendDataToServer(response, "gsSong", function (response) {
+                        if (!response) {
+                            chrome.tabs.executeScript(tab.id, {code: 'alert("Could not copy to Cloudboard. Try again in a few. If the problem persists, contact me: cloudboard@jhartig.com.");'});
+                        }
+                    });
+                }
+            } catch(e) {}
+        });
+    }
     
     function pasteEditableData(info, tab) {
         //get inbox from cache will do everything        
@@ -326,8 +347,32 @@
                 disconnectedOnIdle = false;
                 setTimeout(openServerConnection, 500);
                 //because client id is independent, the only connection SHOULD be shut down
-            } else {
+            } else if (request.gsSong) {                
+                chrome.tabs.getAllInWindow(null, function (tabs) {
+                    var passed = false;
+                    for(var t in tabs) {
+            			if (tabs[t].url.indexOf("http://listen.grooveshark.com") == 0) {
+            			    if (parseInt(request.gsSong) == request.gsSong) {            			         
+            				    chrome.tabs.executeScript(tabs[t].id, {code: 'var script = document.createElement(\'script\'); script.appendChild(document.createTextNode("window.Grooveshark.addSongsByID(['+request.gsSong+'], true);")); document.body.appendChild(script);'});
+            				} else {
+            				    chrome.tabs.executeScript(tabs[t].id, {code: 'var script = document.createElement(\'script\'); script.appendChild(document.createTextNode("window.Grooveshark.addSongByToken(\''+request.gsSong+'\', true);")); document.body.appendChild(script);'});
+            				}
+                            //we don't actually know if these passed...
+                            passed = true;
+                            break;
+            			}
+            		}
+                    if (!passed && parseInt(request.gsSong) != request.gsSong) {
+                        openLink("http://listen.grooveshark.com/s/-/"+request.gsSong);
+                        passed = true;
+                    }
+                    callback(passed);
+                });
+                
+            } else if (request.data) {
                 sendDataToServer(request.data, (request.type ? request.type : 'txt'), callback);
+            } else {
+                //nothing
             }
         }
     );
@@ -454,7 +499,6 @@
     }    
     openServerConnection();
     setInterval(checkIdleState, 5000);
-    
     getInboxFromServerIfUpdated();    
     </script>
 </html>

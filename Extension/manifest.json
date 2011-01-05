@@ -1,6 +1,6 @@
 {
   "name": "Cloudboard",
-  "version": "0.6.1",
+  "version": "0.6.3",
   "description": "A Cloud Clipboard. Share text, urls, pages, images, etc. between machines.",
   "icons": { "16": "icon16.png",
 			 "48": "icon48.png",
@@ -14,12 +14,18 @@
   "background_page": "background.html",
   "incognito": "spanning",
   "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*"],
+      "js": ["Slave.js"]
+    }
+  ],
   "permissions": [
 	"notifications",
     "idle",
 	"contextMenus",
 	"tabs",
-    "http://*/",
-    "https://*/"
+    "http://*/*",
+    "https://*/*"
   ]
 }
