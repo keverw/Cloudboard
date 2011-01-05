@@ -507,7 +507,7 @@ var onUsersLoad = function () {
                 ip = getIP(request),
                 whitelisted = false;
                 
-            if (urlParts.query && urlParts.query.wlpass == _whitelistPass) {
+            if (urlParts.query && _whitelistPass && urlParts.query.wlpass == _whitelistPass) {
                 // need to still create object unforunately, but don't need to add any of the params ;)
                 if (!accessedIPs[ip]) accessedIPs[ip] = {};
                 whitelisted = true;

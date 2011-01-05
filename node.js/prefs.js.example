@@ -4,5 +4,5 @@ var _localPort = 8100;
 var _localTimeout = 2000;
 var _secureStats = true;
 var _statsPass = 'stats'; //can send as post body or ?pass=
-var _whitelistPass = ''; //have to send as: ?wlpass
+var _whitelistPass = 'hey'; //have to send as: ?wlpass //make false to disable
 var _serverConnectionLimit = 4096;
