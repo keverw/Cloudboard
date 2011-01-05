@@ -542,7 +542,8 @@ var onUsersLoad = function () {
                 }            
             }
             
-            console.log("Connection from "+ip+" on "+request.url);
+            if (!whitelisted) console.log("Connection from "+ip+" on "+request.url);
+            
             var process = function(e) {
                 
                 if (e) {
