@@ -349,8 +349,12 @@ function getIP(req) {
             }
         }
     } catch (e) {}
+    if (net.isIP(ip_address) != 0) {
+        return ip_address;
+    } else {
+        return false;
+    }
     
-    return ip_address;
 }
 
 var accessedIPs = {};
@@ -485,6 +489,7 @@ function betterResponse(resp, stTime) {
 
 var fs = require("fs");
 var http = require('http');
+var net = require('net');
 //following needed for inboxes to copy a file
 var sys  = require('sys'),
 exec  = require('child_process').exec;
@@ -507,11 +512,21 @@ var onUsersLoad = function () {
                 ip = getIP(request),
                 whitelisted = false;
                 
-            if (urlParts.query && _whitelistPass && urlParts.query.wlpass == _whitelistPass) {
+            if (ip && urlParts.query && _whitelistPass && urlParts.query.wlpass == _whitelistPass) {
                 // need to still create object unforunately, but don't need to add any of the params ;)
                 if (!accessedIPs[ip]) accessedIPs[ip] = {};
                 whitelisted = true;
-            } else {            
+            } else if (ip == 0) {
+                console.log("* blocked remote connection from wtf: "+ip+" on "+request.url);
+                response.writeHead(403, {
+        			'Content-Type' : 'text/plain',
+        			'Access-Control-Allow-Origin' : '*'
+        		});
+        		response.write('blocked', 'ascii');
+        		response.end();
+                response.connection.end();
+                return;
+            } else {
                 switch(checkIP(ip)) {
                     case 3:
                         console.log("* blocked remote connection from "+ip+" on "+request.url);
