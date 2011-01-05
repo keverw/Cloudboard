@@ -349,11 +349,11 @@ function getIP(req) {
             }
         }
     } catch (e) {}
-    if (net.isIP(ip_address) != 0) {
+    //if (net.isIP(ip_address) != 0) {
         return ip_address;
-    } else {
+    //} else {
         return false;
-    }
+    //}
     
 }
 
