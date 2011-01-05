@@ -158,7 +158,8 @@ inboxes =
                 } else {
                     throw "invalid_post";
                 }
-            } else if (!post.time) { //we don't really want to trust users sending times anyways
+            //we check the length below because what if someone sends us seconds instead of ms
+            } else if (!post.time || (post.time).length < time.length ) { //we don't really want to trust users sending times anyways
                 post.time = time;
             }
             
@@ -256,6 +257,7 @@ inboxes =
                         //loop through each item
                         for(var j in inbox) {
                             if (inbox[j] && inbox[j].time+this.itemLiveTime < time) {
+                                console.log("removing "+j+" from "+user+ " time: "+inbox[j].time);
                                 this.inboxes.spliceItem(user, j, 1); //remember we need to remove from the original array
                             } else {
                                 //newer items definately won't expire ;)
@@ -264,7 +266,7 @@ inboxes =
                         } 
                     } else {
                         //remove invalid inbox
-                        //hmm, this could be bad
+                        //hmm, this could be bad                        
                         this.inboxes.splice(j, 1);
                     }
                     

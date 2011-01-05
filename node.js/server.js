@@ -256,7 +256,7 @@ function getInboxForUser(request, response, user, ip) {
     return false;
 }
 
-function sendServerStats(response) {
+function sendServerStats(response, connections) {
     var stats = {};
     if (users) {
         stats.users = {};
@@ -281,7 +281,6 @@ function sendServerStats(response) {
     }
     
     var secUptime = Math.round(((new Date()).getTime())/1000) - serverStartTime;
-    console.log("secs up: "+secUptime);
     var uptime = '';
     if (secUptime > 172800) { //48 hours
         uptime += Math.floor(secUptime/86400)+' d ';
@@ -291,8 +290,10 @@ function sendServerStats(response) {
         uptime += Math.floor(secUptime/3600)+' h ';
         secUptime = secUptime%3600;
     }
-    uptime += Math.floor(secUptime/3600)+' s ';    
+    uptime += secUptime+' s ';    
     stats.uptime = uptime.replace(/\s+$/,""); //right trim
+    
+    if (connections) stats.connections = connections;
     
     try {
         var string = JSON.stringify(stats);
@@ -313,7 +314,6 @@ function sendServerStats(response) {
         	}, "error generating stats", 'utf8');
         }
     }
-    
 }
 
 function getIP(req) {
@@ -501,7 +501,7 @@ var onUsersLoad = function () {
         var prefsFile = fs.readFileSync("./prefs.js", 'ascii');
         eval(prefsFile);
         
-        http.createServer(function (request, response) {
+        var server = http.createServer(function (request, response) {
             var body = "",
                 urlParts = url.parse(request.url, true),
                 ip = getIP(request),
@@ -585,7 +585,7 @@ var onUsersLoad = function () {
                                 return;
                             }
                         }
-                        sendServerStats(response);
+                        sendServerStats(response, server.connections);
                     break
                     default:
                         accessedIPs[ip].notFound++;
@@ -620,9 +620,23 @@ var onUsersLoad = function () {
                     response.connection.end();
                 } catch (f) {}
             }
-        }).listen((_serverPort ? _serverPort : 80));
+        });
+        server.listen((_serverPort ? _serverPort : 80));
+        server.maxConnections = _serverConnectionLimit;
         //iptables -t nat -A PREROUTING -p tcp --dport 80 -d {ip} -j REDIRECT --to-port 8080
         console.log('Server running on '+_serverIP+':'+(_serverPort ? _serverPort : 80));
+        
+        server.addListener('close', function () {
+            if (inboxes) {
+                try {
+                    //save users when we close the server gracefully
+                    // don't think this will run if we epic failed
+                    inboxes.saveInboxToDisk();
+                } catch (e) {
+                    //data loss baby
+                }
+            }
+        });
         
         http.createServer(function (request, response) {
             var body = "",
