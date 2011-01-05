@@ -352,7 +352,7 @@ function getIP(req) {
     //if (net.isIP(ip_address) != 0) {
         return ip_address;
     //} else {
-        return false;
+    //    return false;
     //}
     
 }
