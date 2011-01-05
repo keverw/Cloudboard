@@ -240,12 +240,80 @@ function getInboxForUser(request, response, user, ip) {
             return false;
         }
     } catch (e) {
-    	response.completeWrite(500, {
-    		'Content-Type' : 'text/plain',
-    		'Access-Control-Allow-Origin' : '*'
-    	}, e, 'ascii');
+        try {
+            //need to be careful writing e...
+        	response.completeWrite(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, e, 'ascii');
+        } catch (e) {
+            response.completeWrite(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, "error sending inbox", 'ascii');
+        }
     }
     return false;
+}
+
+function sendServerStats(response) {
+    var stats = {};
+    if (users) {
+        stats.users = {};
+        stats.users.maxUserID = users.masUserID; //should be our user count...
+        stats.users.count = users.length;
+        
+        stats.streams = {};
+        stats.streams.nextClientId = nextClientId;
+        stats.streams.openStreams = users.openStreams;
+    }
+    if (inboxes) {
+        stats.inboxes = {};
+        stats.inboxes.itemsCount = 0;
+        stats.inboxes.activeUsers = 0;
+        //inboxes and inboxes and inboxes and inboxes
+        inboxes.inboxes.forEach(function(inbox, user) {
+            if (inbox.length > 0) {
+                stats.inboxes.activeUsers++;
+                stats.inboxes.itemsCount += inbox.length;
+            }
+        });
+    }
+    
+    var secUptime = Math.round(((new Date()).getTime())/1000) - serverStartTime;
+    console.log("secs up: "+secUptime);
+    var uptime = '';
+    if (secUptime > 172800) { //48 hours
+        uptime += Math.floor(secUptime/86400)+' d ';
+        secUptime = secUptime%86400;
+    }
+    if (secUptime > 7200) { //2 hours
+        uptime += Math.floor(secUptime/3600)+' h ';
+        secUptime = secUptime%3600;
+    }
+    uptime += Math.floor(secUptime/3600)+' s ';    
+    stats.uptime = uptime.replace(/\s+$/,""); //right trim
+    
+    try {
+        var string = JSON.stringify(stats);
+        response.completeWrite(200, {
+    		'Content-Type' : 'text/plain',
+    		'Access-Control-Allow-Origin' : '*'
+    	}, string, 'utf8');
+    } catch (e) {
+        try {
+            response.completeWrite(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, "couldn't generate stats because: "+e, 'utf8');
+        } catch (e) {
+            response.completeWrite(500, {
+        		'Content-Type' : 'text/plain',
+        		'Access-Control-Allow-Origin' : '*'
+        	}, "error generating stats", 'utf8');
+        }
+    }
+    
 }
 
 function getIP(req) {
@@ -300,7 +368,7 @@ function deleteIPCheck(ip) {
 
 function checkIP(ip) {
     var time = (new Date()).getTime();
-    if (accessedIPs[ip]) {
+    if (accessedIPs[ip] && accessedIPs[ip].connections) {
         accessedIPs[ip].connections++;
         if (accessedIPs[ip].blocked) {
             return 3;
@@ -371,7 +439,7 @@ function betterResponse(resp, stTime) {
     this.completeWrite = function (status, headers, message, locale) {
         try {
             if (this.response) {
-                this.response.writeHead(status, headers);
+                if (!this.headSent) this.response.writeHead(status, headers);
                 this.headSent = true;
                 this.write(message, locale);
                 this.end();
@@ -429,26 +497,35 @@ console.log('===================================================\nCloudboard Nod
 var onUsersLoad = function () {
     //don't start server until done loading inboxes
     var onInboxLoad = function() {
+        
+        var prefsFile = fs.readFileSync("./prefs.js", 'ascii');
+        eval(prefsFile);
+        
         http.createServer(function (request, response) {
             var body = "",
                 urlParts = url.parse(request.url, true),
-                ip = getIP(request);
-            
-            switch(checkIP(ip)) {
-                case 3:
-                    console.log("* blocked remote connection from "+ip+" on "+request.url);
-                    response.writeHead(403, {
-            			'Content-Type' : 'text/plain',
-            			'Access-Control-Allow-Origin' : '*'
-            		});
-            		response.write('blocked', 'ascii');
-            		response.end();
-                    response.connection.end();
-                    return;
-                break
+                ip = getIP(request),
+                whitelisted = false;
+                
+            if (urlParts.query && urlParts.query.wlpass == _whitelistPass) {
+                // need to still create object unforunately, but don't need to add any of the params ;)
+                if (!accessedIPs[ip]) accessedIPs[ip] = {};
+                whitelisted = true;
+            } else {            
+                switch(checkIP(ip)) {
+                    case 3:
+                        console.log("* blocked remote connection from "+ip+" on "+request.url);
+                        response.writeHead(403, {
+                			'Content-Type' : 'text/plain',
+                			'Access-Control-Allow-Origin' : '*'
+                		});
+                		response.write('blocked', 'ascii');
+                		response.end();
+                        response.connection.end();
+                        return;
+                    break
+                }            
             }
-            
-            
             
             console.log("Connection from "+ip+" on "+request.url);
             var process = function(e) {
@@ -478,10 +555,8 @@ var onUsersLoad = function () {
                     case "/listen":
                         waitForUpdate(request, response, user, ip);
                     break
-                    case "/post":
-                        //need to create post
-                        var post = createPostFromClient(body, urlParts.query);
-                        //should return a string
+                    case "/post":                        
+                        var post = createPostFromClient(body, urlParts.query); //need to create post compatible as it if came from nginx
                         if (post) {
                             sendPostToUsers(request, response, user, post);
                         } else {
@@ -491,8 +566,27 @@ var onUsersLoad = function () {
                     		}, 'invalid_post', 'ascii');
                         }
                     break
-                    case "/checkuser":                        
+                    case "/favicon.ico":
+                        response.completeWrite(404, {
+                			'Content-Type' : 'text/plain',
+                			'Access-Control-Allow-Origin' : '*'
+                		}, 'not found', 'ascii');
+                        return;
+                    break
+                    case "/checkuser":
                         checkUserExists(request, response, user, ip);
+                    case "/node-status":
+                        if (_secureStats && _statsPass) {
+                            if (!(body && body == _statsPass) && !(urlParts.query && urlParts.query.pass == _statsPass)) {
+                                response.completeWrite(404, {
+                        			'Content-Type' : 'text/plain',
+                        			'Access-Control-Allow-Origin' : '*'
+                        		}, 'not found', 'ascii');
+                                return;
+                            }
+                        }
+                        sendServerStats(response);
+                    break
                     default:
                         accessedIPs[ip].notFound++;
                         response.completeWrite(404, {
@@ -510,6 +604,9 @@ var onUsersLoad = function () {
                 });
                 request.addListener('end', function () {
                     process(null);
+                    if (whitelisted) {
+                        accessedIPs[ip] = {};
+                    }
                 });
             } catch(e) {
                 console.log("request issue error: "+e);
@@ -523,10 +620,9 @@ var onUsersLoad = function () {
                     response.connection.end();
                 } catch (f) {}
             }
-        }).listen(8080);
-        //"74.117.157.34"
+        }).listen((_serverPort ? _serverPort : 80));
         //iptables -t nat -A PREROUTING -p tcp --dport 80 -d {ip} -j REDIRECT --to-port 8080
-        console.log('Server running on 74.117.157.34:8080');
+        console.log('Server running on '+_serverIP+':'+(_serverPort ? _serverPort : 80));
         
         http.createServer(function (request, response) {
             var body = "",
@@ -545,7 +641,7 @@ var onUsersLoad = function () {
                     return;
                 }
                 
-                request.connection.setTimeout(2000);
+                request.connection.setTimeout(_localTimeout);
                 
                 response = new betterResponse(response, request.socket._idleStart.getTime());
                                 
@@ -588,8 +684,8 @@ var onUsersLoad = function () {
                     response.connection.end();
                 } catch (f) {}
             }
-        }).listen(8100, "127.0.0.1");
-        console.log('Local Server running on 127.0.0.1:8100');
+        }).listen((_localPort ? _localPort : 8100), "127.0.0.1");
+        console.log('Local Server running on 127.0.0.1:'+(_localPort ? _localPort : 8100));
         
     };
     //require("./inboxes");

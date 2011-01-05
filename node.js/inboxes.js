@@ -240,6 +240,7 @@ inboxes =
     /*
     this function has the potential to take a long time
     still better than having a bunch of setTimeouts however
+        especially since we are saving to disk...
     */    
     removeOldItems: function () {
         var time = (new Date()).getTime();
@@ -254,7 +255,7 @@ inboxes =
                     if (inbox) {
                         //loop through each item
                         for(var j in inbox) {
-                            if (inbox[j] && inbox[j].time+itemLiveTime < time) {
+                            if (inbox[j] && inbox[j].time+this.itemLiveTime < time) {
                                 this.inboxes.spliceItem(user, j, 1); //remember we need to remove from the original array
                             } else {
                                 //newer items definately won't expire ;)
@@ -263,11 +264,12 @@ inboxes =
                         } 
                     } else {
                         //remove invalid inbox
-                        this.inboxes.splice(i, 1);
+                        //hmm, this could be bad
+                        this.inboxes.splice(j, 1);
                     }
                     
                 } catch (e) {
-                    console.log("could not complete inbox of user: "+i+" msg: "+e);
+                    console.log("could not complete inbox of user: "+j+" msg: "+e);
                 }
             }.bind(this));
         } catch (e) {
@@ -290,6 +292,7 @@ inboxes =
             console.log("wtf, we have a bad inboxes");
             return false;
         }
+        this.removeOldItems(); //before we save see if there is anything we can clean up
         if (this.inboxes.lastChange > this.lastInboxesSave) {
             try {
                 var save = this.inboxes.stringify();
@@ -377,6 +380,8 @@ inboxes.loadInboxFromStorage(function() {
     if (!extension) {
         //TODO catch calls in here and console.log not the other way around
         setInterval(function() { inboxes.saveInboxToDisk(); }, inboxes.saveInboxesToDiskInterval);
+    } else {
+        setInterval(function() { inboxes.removeOldItems(); }, inboxes.saveInboxesToDiskInterval);
     }
     if (onInboxLoad) {
         onInboxLoad();

@@ -10,6 +10,8 @@ users = {
     lastUserCheck: 0,
     userFile: '/srv/www/cloudboard/data/users',
     refreshListenersInterval: 3000,
+    length: 0,
+    openStreams: 0,
     
     getUser: function (user) {
         //no sent user        
@@ -79,8 +81,6 @@ users = {
             var listens = this.getListens(user);
             for(var i in listens) {
                 if (listens[i].id == id) {
-                    //hmmmm should we do a setTimeout here?
-                    console.log("closing old connection from user: "+user+" with id: "+id);
                     try {
                         listens[i].response.end(true); //true means force close everything
                     } catch (e) {}
@@ -98,7 +98,7 @@ users = {
             addStreamForIP(listener.ip);
             
             //listeners and such will be handed in server
-            console.log("new listener for user:"+user);
+            //console.log("new listener for user:"+user);
             (this.getUser(user).listens).push(listener);
         } catch (e) {
             throw e;
@@ -193,16 +193,19 @@ users = {
     //go through the users and kill off old connections
     refreshUserListeners: function () {
         var date = new Date();
+        var count = 0;
         for(var i in this.users) {
             try {
                 var listens = this.getListens(i);
-                for(var j in listens) {
+                for(var j in listens) {                    
+                    count++;//could try listens.length, but why?
+                    
                     var request = listens[j].request;
                     var response = listens[j].response;
-                    //make sure we have a request and response
-                    if (!request || !response) {
-                        minusStreamForIP(listens[j].ip);
-                        listens.splice(j,1);
+                    
+                    var remove = false;
+                    if (!request || !response) { //make sure we have a request and response
+                        remove = true;
                     } else {
                         try {
                             var sent = response.write("-", 'utf8');
@@ -211,7 +214,6 @@ users = {
                         }
                         //no legacy support here 
                         //TODO: legacy support
-                        var remove = false;
                     	if (sent && response.writable() && date.getTime() - response.startTime > connectionLive+15000) { //expire 15 secs plus expire
                     		//this should never even happen
                             remove = true;
@@ -229,18 +231,20 @@ users = {
                                 //TODO: legacy support
                                 response.end(true);
                             } catch (e) {}                                                               
-                    	}
-                        if (remove) {
-                            try { clearTimeout(listens[j].timeout); } catch(e) {}
-                            minusStreamForIP(listens[j].ip);
-                    	    listens.splice(j,1);
-                        }
+                    	}                        
+                    }
+                    if (remove) {
+                        try { clearTimeout(listens[j].timeout); } catch(e) {}
+                        minusStreamForIP(listens[j].ip);
+                	    listens.splice(j,1);
+                        count--;
                     }
                 }
             } catch (e) {
                 console.log("couldn't refresh user: "+i+" because of: "+e);
             }
         }
+        this.openStreams = count;
     },
     //useless
     userExists: function(user) {
