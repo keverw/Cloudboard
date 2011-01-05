@@ -153,7 +153,7 @@ inboxes =
             if (!post.type || !post.text) {
                 if (typeof post == "string") {
                     post = {type: 'txt', text: post, time: time};
-                } else if (post.text && !post.type) {
+                } else if (post.text && (!post.type || (post.type).length > 6)) {
                     post.type = "txt"; //default to text even though we shouldn't
                 } else {
                     throw "invalid_post";
