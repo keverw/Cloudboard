@@ -405,7 +405,7 @@ class db {
                     list($auth) = sscanf($key, self::USER_AUTH_KEY);
                     list($auth, $u) = explode(":", $auth);
                     $users[$u] = $auth;
-                }          
+                }
                 return $users;
             } catch (Exception $e) {
                 return array();
@@ -438,7 +438,7 @@ class db {
                     }
                 }
                 $stats['totalItems'] = $items;
-                $stats['users'] = count($idsKeys);
+                $stats['users'] = $this->redis->zcount(self::USERS_SET, 0, "+inf");
                 $stats['activeUsers'] = $aUsers; //if they have ANY shared items right now, might not be completely accurate
                 $stats['activeItems'] = $aItems;
                 return $stats;
