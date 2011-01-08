@@ -114,9 +114,11 @@ users = {
             //listeners and such will be handed in server
             //console.log("new listener for user:"+user);
             (this.getUser(user).listens).push(listener);
+            return true;
         } catch (e) {
             throw e;
         }
+        return false;
     },
     
     getLastUpdated: function (user) {        
