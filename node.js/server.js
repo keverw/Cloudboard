@@ -143,7 +143,7 @@ function waitForUpdate(request, response, user, ip, lastTime) {
 
 function minusStreamForIP(ip) {
     if (ip && accessedIPs[ip]) {
-        accessedIPs[ip].streams--; 
+        accessedIPs[ip].streams--;
     }
 }
 
@@ -575,7 +575,7 @@ var onUsersLoad = function () {
                         getInboxForUser(request, response, user, ip);
                     break
                     case "/listen":
-                        waitForUpdate(request, response, user, ip, (urlParts.query ? urlParts.query.lasttime : false));
+                        waitForUpdate(request, response, user, ip, (urlParts.query && urlParts.query.lasttime ? parseInt(urlParts.query.lasttime) : false));
                     break
                     case "/post":                        
                         var post = createPostFromClient(body, urlParts.query); //need to create post compatible as it if came from nginx

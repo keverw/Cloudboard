@@ -95,9 +95,10 @@ users = {
                 throw "too_many_listens";
             }
 
-            if (lastTime && lastTime < this.getLastUpdated(user)) {
+            if (lastTime && lastTime > 0 && lastTime < this.getLastUpdated(user)) {
                 var inbox = inboxes.getUserInbox(this.getUser(user).id);
-                if (inbox && inbox[0] && inbox[0].time > lastTime && inbox[0].text) {                    
+                if (inbox && inbox[0] && inbox[0].time > lastTime && inbox[0].text) {
+                    console.log(inbox[0].time, lastTime);
                     if (listener.response.headSent === false) {
                         listener.response.writeHead(200, {
                     		'Content-Type' : 'text/plain',
@@ -114,6 +115,7 @@ users = {
             //listeners and such will be handed in server
             //console.log("new listener for user:"+user);
             (this.getUser(user).listens).push(listener);
+            this.openStreams++;
             return true;
         } catch (e) {
             throw e;
