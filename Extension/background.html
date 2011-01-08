@@ -211,12 +211,12 @@
 		if (xhr.readyState == 4) {
 			var resp = xhr.responseText;
             openConnection = false;
-            lastTime = new Date().getTime();
             if (interval) { clearInterval(interval); }
             if (xhr.responseText == "invalid_token") {
                 clearErrors();
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
             } else if (xhr.status == 200) {
+                lastTime = new Date().getTime();
                 clearErrors();
                 if (resp.indexOf("$") >=0) {
                     resp = resp.substr(resp.indexOf("$")+1);

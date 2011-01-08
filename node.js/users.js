@@ -105,8 +105,8 @@ users = {
                     	});
                     }
             		listener.response.write("$"+inbox[0].text, 'utf8');
-                }                
-                return false;                
+                    return false;
+                }                               
             }
             
             addStreamForIP(listener.ip);
