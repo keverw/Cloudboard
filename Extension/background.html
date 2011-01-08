@@ -147,7 +147,7 @@
                console.log("connection reopened after not idle");
                clearErrors();
                openServerConnection();
-               
+               getInboxFromServerIfUpdated();
            }
         });
         //see if they changed the notification setting
@@ -192,7 +192,6 @@
                     openConnection.send();
                     if (timeout) { clearTimeout(timeout); }
                     timeout = setTimeout(clearErrors, 300000); //clear errors if we are still loading after 5 minutes
-                    
                     //server should timeout around 25 minutes
                     
                     //if (interval) { clearInterval(interval); }
@@ -499,6 +498,7 @@
     }    
     openServerConnection();
     setInterval(checkIdleState, 5000);
-    getInboxFromServerIfUpdated();    
+    getInboxFromServerIfUpdated();
+    setInterval(getInboxFromServerIfUpdated, 1800000); //every 30 mins make sure we are updated
     </script>
 </html>

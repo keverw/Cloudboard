@@ -60,7 +60,7 @@ users = {
     },
     
     //listener should be an object with response and request    
-    addListenRequest: function(user, listener, clientID) {
+    addListenRequest: function(user, listener, clientID, lastTime) {
         try {
             if (!this.getUser(user).listens) {
                 this.getUser(user).listens = [];
@@ -94,6 +94,20 @@ users = {
             if ((this.getUser(user).listens).length > userListeningLimit) {
                 throw "too_many_listens";
             }
+
+            if (lastTime && lastTime < this.getLastUpdated(user)) {
+                var inbox = inboxes.getUserInbox(this.getUser(user).id);
+                if (inbox && inbox[0] && inbox[0].time > lastTime && inbox[0].text) {                    
+                    if (listener.response.headSent === false) {
+                        listener.response.writeHead(200, {
+                    		'Content-Type' : 'text/plain',
+                    		'Access-Control-Allow-Origin' : '*'
+                    	});
+                    }
+            		listener.response.write("$"+inbox[0].text, 'utf8');
+                }                
+                return false;                
+            }
             
             addStreamForIP(listener.ip);
             
@@ -109,10 +123,10 @@ users = {
         try { 
             user = this.getUser(user);
             if (!user.lastUpdated) {
-                console.log(user);
                 var inbox = inboxes.getUserInbox(user.id);
                 if (!inbox || !inbox[0]) {
                     user.lastUpdated = (new Date()).getTime(); // they don't have an inbox, so the last update was now
+                    // this could be epic fail if we have a failed inbox or we don't have anything for the user
                 } else {
                     user.lastUpdated = inbox[0].time;
                 }

@@ -37,7 +37,7 @@ response should be our own version of response
 if not, everything SHOULD still work
 */
 
-function waitForUpdate(request, response, user, ip) {
+function waitForUpdate(request, response, user, ip, lastTime) {
 
     if (!checkUser(request, response, user)) {
         return false;
@@ -59,7 +59,7 @@ function waitForUpdate(request, response, user, ip) {
             }
         }, connectionLive);
         
-        users.addListenRequest(user, {request: request, response: response, ip: ip, timeout: timeout}, request.headers['cb-serverid']);
+        var connection = users.addListenRequest(user, {request: request, response: response, ip: ip, timeout: timeout}, request.headers['cb-serverid'], lastTime);
     } catch(e) {
         switch (e) {
             case "too_many_listens":
@@ -103,6 +103,10 @@ function waitForUpdate(request, response, user, ip) {
                 return false;
             break            
         }
+        return false;
+    }
+    
+    if (!connection) {
         return false;
     }
     
@@ -435,6 +439,7 @@ function betterResponse(resp, stTime) {
     this.response = resp;
     this.canWrite = true; //unset on end()
     this.headSent = false;
+    this.ended = false;
     this.writable = function() {
         return this.canWrite && this.response.connection && this.response.connection.writable;
     };
@@ -476,9 +481,10 @@ function betterResponse(resp, stTime) {
     
     this.end = function(force) {
         try {
-            if (this.response) {
+            if (this.response && !this.ended) {
                 this.response.end();
                 if (force && this.connection) this.connection.end();
+                this.ended = true;
             }
             this.canWrite = false;
         } catch (e) {
@@ -569,7 +575,7 @@ var onUsersLoad = function () {
                         getInboxForUser(request, response, user, ip);
                     break
                     case "/listen":
-                        waitForUpdate(request, response, user, ip);
+                        waitForUpdate(request, response, user, ip, (urlParts.query ? urlParts.query.lasttime : false));
                     break
                     case "/post":                        
                         var post = createPostFromClient(body, urlParts.query); //need to create post compatible as it if came from nginx
