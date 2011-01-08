@@ -8,7 +8,7 @@ users = {
     users : {},
     maxUserID : 0,
     lastUserCheck: 0,
-    userFile: '/srv/www/cloudboard/data/users',
+    userFile: '/cloudboard/users',
     refreshListenersInterval: 3000,
     length: 0,
     openStreams: 0,
@@ -308,12 +308,11 @@ users = {
         
         if (!onStart) {
             fs.stat(this.userFile, function(err, stats) {
-                //make sure that we need to read
             	if (stats.mtime.getTime() > this.lastUserCheck) {
             	    //actually read file
             		fs.readFile(this.userFile, 'utf8', processFile);
             	}        
-            });
+            }.bind(this));
         } else {
             //cannot let the script die
             try {
