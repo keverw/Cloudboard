@@ -9,7 +9,7 @@ users = {
     maxUserID : 0,
     lastUserCheck: 0,
     userFile: '/cloudboard/users',
-    refreshListenersInterval: 30000,
+    refreshListenersInterval: 120000,
     length: 0,
     openStreams: 0,
     

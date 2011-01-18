@@ -220,7 +220,7 @@
                                     var notification = webkitNotifications.createNotification(
                                       'icon48.png',
                                       'New Cloudboard Paste',
-                                      resp.text
+                                      (resp.type != "gsSong" ? resp.text : "http://listen.grooveshark.com/s/-/"+resp.text)
                                     );
                                     notification.show();
                                 }
