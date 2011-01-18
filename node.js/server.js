@@ -287,14 +287,14 @@ function sendServerStats(response, connections) {
     var secUptime = Math.round(((new Date()).getTime())/1000) - serverStartTime;
     var uptime = '';
     if (secUptime > 172800) { //48 hours
-        uptime += Math.floor(secUptime/86400)+' d ';
+        uptime += Math.floor(secUptime/86400)+'d ';
         secUptime = secUptime%86400;
     }
     if (secUptime > 7200) { //2 hours
-        uptime += Math.floor(secUptime/3600)+' h ';
+        uptime += Math.floor(secUptime/3600)+'h ';
         secUptime = secUptime%3600;
     }
-    uptime += secUptime+' s ';    
+    uptime += secUptime+'s ';    
     stats.uptime = uptime.replace(/\s+$/,""); //right trim
     
     if (connections) stats.connections = connections;

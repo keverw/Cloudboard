@@ -195,8 +195,7 @@ users = {
                             } catch (e) {}
                         }
                         minusStreamForIP(listens[i].ip);
-                        listens.splice(i,1);
-                        
+                        listens.splice(i,1);                        
                     }
                 }
             }

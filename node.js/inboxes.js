@@ -181,7 +181,7 @@ inboxes =
                     } else {
                         inbox[i].time = post.time;
                         inbox[i].type = post.type;
-                        inboxes.changed();
+                        this.inboxes.changed();
                         //little hack
                     }
                     return 'dup';
