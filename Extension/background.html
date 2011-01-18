@@ -91,7 +91,7 @@
     		var params = data;
     		var xhr = new XMLHttpRequest();
     		xhr.onreadystatechange = function (xhr) { handleServerResponse(xhr, callback); };
-    		xhr.open("POST", "http://74.117.157.34/post?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
+    		xhr.open("POST", "http://cbnode.jhartig.com/post?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&type="+type+"&version=1", true);
     		xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded"); //we need this for some reason
             xhr.send(params);
             lastPaste = data;
@@ -131,8 +131,6 @@
             openServerConnection(); //reopen
         }
     }
-    
-    var disconnectedOnIdle = false;
     var aborted = false;
     var idle = false;
     
@@ -141,30 +139,15 @@
            if ((state == "idle" || state == "locked") && !idle) {
                //don't abort connection
                idle = true;
-               console.error("computer is idle not opening anymore connections");
+               console.log("Idle. not opening anymore connections");
            } else if (state == "active" && idle && !openConnection) { //they are back
                idle = false;
-               console.log("connection reopened after not idle");
+               console.log("Connection reopened after not idle");
                clearErrors();
                openServerConnection();
                getInboxFromServerIfUpdated();
            }
         });
-        //see if they changed the notification setting
-        /*if (openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 0) {
-            clearTimeout(timeout);
-            aborted = true; //tell us not to restart connection on error
-            if (interval) { clearInterval(interval); }
-            openConnection.abort();
-            openConnection = false;
-            clearErrors();
-            console.error("connection aborted because changed setting");
-        } else if (!openConnection && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1 && !aborted && !error) {
-            console.log("changed notification setting");
-            clearErrors();
-            openServerConnection();            
-        }*/
-        //in 0.6.2 polling is ALWAYS on
     }
     
     var openConnection = false;
@@ -180,23 +163,17 @@
     function openServerConnection() {
         if (!openConnection && !idle && localStorage.getItem("com.jhartig.cloudboard.notifications") == 1) {
             aborted = false;
-            disconnectedOnIdle = false;
             if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
       		    console.log("Opening long polling connection");
                   try {
                     openConnection = new XMLHttpRequest();
             		openConnection.onreadystatechange = function (xhr) { handleListenResponse(xhr); };
-            		openConnection.open("GET", "http://74.117.157.34/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1&lasttime="+lastTime, true);
-                    //openConnection.setRequestHeader("Connection", "close");
+            		openConnection.open("GET", "http://cbnode.jhartig.com/listen?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1&lasttime="+lastTime, true);
                     openConnection.setRequestHeader("CB-ServerID", serverID);
                     openConnection.send();
                     if (timeout) { clearTimeout(timeout); }
                     timeout = setTimeout(clearErrors, 300000); //clear errors if we are still loading after 5 minutes
                     //server should timeout around 25 minutes
-                    
-                    //if (interval) { clearInterval(interval); }
-                    //interval = setInterval(getPartialResponse, 1000);
-                    //chrome doesn't support partialResponses
                 } catch (e) {
                     
                 }
@@ -211,7 +188,6 @@
 		if (xhr.readyState == 4) {
 			var resp = xhr.responseText;
             openConnection = false;
-            if (interval) { clearInterval(interval); }
             if (xhr.responseText == "invalid_token") {
                 clearErrors();
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
@@ -251,6 +227,8 @@
                             }
                         }      
                     }
+                } else {
+                    console.log("Server connection timed out. (or disconnected)");
                 }
                 clearTimeout(timeout);
                 openServerConnection();
@@ -343,7 +321,6 @@
                     openConnection = false;
                 }
                 console.error("connection aborted because of new token");
-                disconnectedOnIdle = false;
                 setTimeout(openServerConnection, 500);
                 //because client id is independent, the only connection SHOULD be shut down
             } else if (request.gsSong) {                
@@ -412,7 +389,6 @@
                 callback("invalid_token");
             } else {
                 var time = parseInt(resp);
-                console.log("got updated: "+time);
                 if (!time || time > parseInt(localStorage.getItem("com.jhartig.cloudboard.lastUpdated"))) {
                     callback(true);
                 } else {
@@ -426,7 +402,7 @@
 	    if (localStorage.getItem("com.jhartig.cloudboard.authToken") && localStorage.getItem("com.jhartig.cloudboard.authToken") != "invalid_token") { //only send if we have an authToken
             var xhr = new XMLHttpRequest();
     		xhr.onreadystatechange = function (xhr) { handleInboxResponse(xhr, callback); };
-    		xhr.open("GET", "http://74.117.157.34/inbox?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
+    		xhr.open("GET", "http://cbnode.jhartig.com/inbox?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", true);
     		xhr.send();
        } else {
             if (callback) {
@@ -449,13 +425,13 @@
             } else {
                 localStorage.setItem("com.jhartig.cloudboard.lastUpdated", new Date().getTime()); //get unix timestamp
                 localStorage.setItem("com.jhartig.cloudboard.inboxCache", resp);
-                try {
-                    resp = JSON.parse(resp);
-                    if (callback) {
-                        callback(resp);
+                if (callback) {
+                    try {
+                        resp = JSON.parse(resp);                    
+                        callback(resp);                    
+                    } catch (e) {
+                        console.error('cannot parse inbox: '+e);
                     }
-                } catch (e) {
-                    console.error('cannot parse inbox: '+e);
                 }                
             }
 		}
@@ -470,7 +446,9 @@
             var resp = localStorage.getItem("com.jhartig.cloudboard.inboxCache");
             try {
                 resp = JSON.parse(resp);
-                callback(resp);
+                if (callback) {
+                    callback(resp);
+                }
             } catch (e) {
                 console.error('cannot parse inbox: '+e);
                 getInboxFromServerIfUpdated(callback);
@@ -482,10 +460,7 @@
         //get if we have updated inbox and then update
         getIfUpdated(function(update) {
             if ((update && update != "invalid_token") || localStorage.getItem("com.jhartig.cloudboard.inboxCache") == null) {
-                console.log("fetching new inbox from server");
                 getInboxFromServer(callback);
-            } else {
-                console.log("no update needed for inbox cache");
             }
         });
     }

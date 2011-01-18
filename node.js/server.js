@@ -397,7 +397,7 @@ function checkIP(ip) {
             }
             accessedIPs[ip].timer = setTimeout(function() {delete accessedIPs[ip];}, 3600000); //one hour blocked
             return 3;
-        } else if ((time-accessedIPs[ip].time)/1000 > 4 && accessedIPs[ip].connections/((time-accessedIPs[ip].time)/1000)*60 > 100) { //more than 100 a minute
+        } else if ((time-accessedIPs[ip].time)/1000 > 6 && accessedIPs[ip].connections > 20 && accessedIPs[ip].connections/((time-accessedIPs[ip].time)/1000)*60 > 400) { //more than 100 a minute
             console.log("too many new connections for: "+ip);
             accessedIPs[ip].blocked = true;
             if (accessedIPs[ip].timer) {

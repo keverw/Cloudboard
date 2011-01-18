@@ -9,7 +9,7 @@ users = {
     maxUserID : 0,
     lastUserCheck: 0,
     userFile: '/cloudboard/users',
-    refreshListenersInterval: 3000,
+    refreshListenersInterval: 30000,
     length: 0,
     openStreams: 0,
     
@@ -98,7 +98,6 @@ users = {
             if (lastTime && lastTime > 0 && lastTime < this.getLastUpdated(user)) {
                 var inbox = inboxes.getUserInbox(this.getUser(user).id);
                 if (inbox && inbox[0] && inbox[0].time > lastTime && inbox[0].text) {
-                    console.log(inbox[0].time, lastTime);
                     if (listener.response.headSent === false) {
                         listener.response.writeHead(200, {
                     		'Content-Type' : 'text/plain',
@@ -106,6 +105,7 @@ users = {
                     	});
                     }
             		listener.response.write("$"+inbox[0].text, 'utf8');
+                    listener.response.end();
                     return false;
                 }                               
             }
@@ -126,21 +126,37 @@ users = {
     getLastUpdated: function (user) {        
         try { 
             user = this.getUser(user);
-            if (!user.lastUpdated) {
-                var inbox = inboxes.getUserInbox(user.id);
-                if (!inbox || !inbox[0]) {
-                    user.lastUpdated = (new Date()).getTime(); // they don't have an inbox, so the last update was now
-                    // this could be epic fail if we have a failed inbox or we don't have anything for the user
-                } else {
-                    user.lastUpdated = inbox[0].time;
+            if (user) {
+                if (!user.lastUpdated) {
+                    var inbox = inboxes.getUserInbox(user.id);
+                    if (!inbox || !inbox[0]) {
+                        user.lastUpdated = (new Date()).getTime(); // they don't have an inbox, so the last update was now
+                        // this could be epic fail if we have a failed inbox or we don't have anything for the user
+                    } else {
+                        user.lastUpdated = inbox[0].time;
+                    }
                 }
+                return user.lastUpdated;
+            } else {
+                return 0;
             }
-            return user.lastUpdated;
         } catch (e) {
             throw e;
         }
     },
     
+    updateUserUpdated: function (user) {
+        try { 
+            user = this.getUser(user);
+            if (user) {
+                user.lastUpdated = (new Date()).getTime();
+                return true;
+            }
+            return false;
+        } catch (e) {
+            throw e;
+        }
+    },
     
     newPost: function (user, post) {
         try {
@@ -157,23 +173,28 @@ users = {
             }
             
             var resp = inboxes.storeNewPost(user, postObj);            
-            this.users[user].lastUpdated = (new Date()).getTime();
+            //this.users[user].lastUpdated = (new Date()).getTime();
+            //should be handled by inboxes
             
             var cnt = 0;
-            
+            console.log("Number of Listens: "+listens.length);
+            var removals = [];
             for(var i in listens) {
                 var response = listens[i].response;
                 //make sure we have a response
                 if (!response) {
                     console.log("no response for user: "+user+" listen: "+i);
                     minusStreamForIP(listens[i].ip);
-                    listens.splice(i,1);
+                    //listens.splice(i,1);
+                    removals.push(i);
                 } else {
                     if (!response.connection || !response.writable()) {
                         console.log("could not respond to user: "+user+" listen: "+i);
                         minusStreamForIP(listens[i].ip);
-                        listens.splice(i,1);
+                        //listens.splice(i,1);
+                        removals.push(i);
                     } else {
+                        console.log("Writing post to listener");
                         try {
                             //if its a legacy response it will return null (but then we don't have a clue if we sent them or not :/
                             if (response.headSent === false) {
@@ -185,7 +206,7 @@ users = {
                             //send $ to signify that we are sending post finally
                     		response.write("$"+post, 'utf8');
                             try { clearTimeout(listens[i].timeout); } catch(e) {}
-                    		response.end(true);
+                    		response.end();
                             cnt++;
                         } catch (e) {
                             console.log("couldn't write to user: "+e);
@@ -195,9 +216,15 @@ users = {
                             } catch (e) {}
                         }
                         minusStreamForIP(listens[i].ip);
-                        listens.splice(i,1);                        
+                        //listens.splice(i,1);
+                        removals.push(i);
                     }
                 }
+            }
+            var change = 0; //must account for 1 being the new 0
+            for (var i in removals) {
+                listens.splice(removals[i]-change++,1);
+                this.openStreams--;
             }
             console.log(cnt+" responses sent for user: "+user);
         } catch (e) {
@@ -213,8 +240,9 @@ users = {
         var count = 0;
         for(var i in this.users) {
             try {
+                var removals = [];
                 var listens = this.getListens(i);
-                for(var j in listens) {                    
+                for(var j in listens) {                  
                     count++;//could try listens.length, but why?
                     
                     var request = listens[j].request;
@@ -224,24 +252,28 @@ users = {
                     if (!request || !response) { //make sure we have a request and response
                         remove = true;
                     } else {
+                        var sent = false;
                         try {
-                            var sent = response.write("-", 'utf8');
+                            response.write("-", 'utf8');
+                            sent = true;
                         } catch (e){
-                            var sent = false;
+                            console.log("could not write: "+e);
                         }
                         //no legacy support here 
                         //TODO: legacy support
                     	if (sent && response.writable() && date.getTime() - response.startTime > connectionLive+15000) { //expire 15 secs plus expire
                     		//this should never even happen
+                            console.log("user: "+i+" expired connection");
                             remove = true;
                             try {
                                 //still don't care about legacy
                                 //TODO: legacy support
                         		response.end(true);                               
                             } catch (e) {}
-                            console.log("user: "+i+" expired connection");
+                            
                     	} else if (!sent || !response.writable() || !response.connection) { //if connection is closed
                             //in contrast, this happens frequently
+                            //console.log("removing...", sent, response.writable(), response.connection);
                             remove = true; 
                             try {
                                 //still don't care about legacy
@@ -251,11 +283,17 @@ users = {
                     	}                        
                     }
                     if (remove) {
+                        console.log("removing: "+j+" connection");
                         try { clearTimeout(listens[j].timeout); } catch(e) {}
                         minusStreamForIP(listens[j].ip);
-                	    listens.splice(j,1);
+                	    //listens.splice(j,1);
+                        removals.push(i);
                         count--;
                     }
+                }
+                var change = 0; //must account for 1 being the new 0
+                for (var i in removals) {
+                    listens.splice(removals[i]-change++,1);
                 }
             } catch (e) {
                 console.log("couldn't refresh user: "+i+" because of: "+e);
@@ -337,7 +375,7 @@ users.getUsersFromStorage(function() {
     //TODO catch calls in here and console.log not the other way around
     //setInterval(function() { users.saveUsersToDisk(); }, users.saveUsersToDiskInterval);
     //users file is saved when we get a new user ;)
-    setInterval(function() { users.refreshUserListeners }, users.refreshListenersInterval);
+    setInterval(function() { users.refreshUserListeners(); }.bind(users), users.refreshListenersInterval);
     if (onUsersLoad) {
         onUsersLoad();
     }

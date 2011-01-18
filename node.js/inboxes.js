@@ -22,8 +22,11 @@ inboxes =
         //sadly lastUpdated times are held in users
         length: 0,
         lastChange: 0,
-        changed: function() {
+        changed: function(user) {
             this.lastChange = (new Date()).getTime();
+            if (users && user) {
+                users.updateUserUpdated(user);
+            }
             try {
                 if (extension) {
                     localStorage.setItem(this.localStorageInboxesKey, this.stringify());
@@ -89,7 +92,7 @@ inboxes =
                 }
                 var count = this.getInbox(id).splice(i,c);
                 if (count) {
-                    this.changed();
+                    this.changed(id);
                     return count;
                 } else {
                     return 0;
@@ -105,7 +108,7 @@ inboxes =
                 }
                 var count = this.getInbox(id).unshift(item);
                 if (count) {
-                    this.changed();
+                    this.changed(id);
                     return count;
                 } else {
                     return 0;
@@ -121,7 +124,7 @@ inboxes =
                 }
                 var item = this.getInbox(id).pop();
                 if (item) {
-                    this.changed();
+                    this.changed(id);
                     return item;
                 } else {
                     return null;
@@ -249,6 +252,7 @@ inboxes =
         var time = (new Date()).getTime();
         var updated = false; //did we actually do something
         try {
+            var removals = [];
             this.inboxes.forEach(function(inbox, user) {
                 try {
                     //slice = new array copy
@@ -259,7 +263,8 @@ inboxes =
                         //loop through each item
                         for(var j in inbox) {
                             if (inbox[j] && inbox[j].time+this.itemLiveTime < time) {
-                                console.log("removing "+j+" from "+user+ " time: "+inbox[j].time);
+                                //console.log("removing "+j+" from "+user+ " time: "+inbox[j].time);
+                                //we are ok keeping splice in here because we are looping through a copy
                                 this.inboxes.spliceItem(user, j, 1); //remember we need to remove from the original array
                             } else {
                                 //newer items definately won't expire ;)
@@ -268,14 +273,20 @@ inboxes =
                         } 
                     } else {
                         //remove invalid inbox
-                        //hmm, this could be bad                        
-                        this.inboxes.splice(j, 1);
+                        //hmm, this could be bad
+                        //this.inboxes.splice(j, 1);
+                        removals.push(j);
                     }
                     
                 } catch (e) {
                     console.log("could not complete inbox of user: "+j+" msg: "+e);
                 }
             }.bind(this));
+            
+            //remove after loop completed
+            for (var u in removals) {
+                this.inboxes.splice(removals[u], 1);
+            }            
         } catch (e) {
             //TODO: reload inboxes from disk
             console.log("could not read inboxes msg: "+e);
