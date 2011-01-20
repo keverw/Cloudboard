@@ -117,6 +117,23 @@
             document.getElementById("uploadText").focus();
         }
         
+        function debugOpen() {
+            openNew();
+            document.forms[0].text.value = "Testing...";
+            
+            var xhr = new XMLHttpRequest();
+    		xhr.onreadystatechange = function (xhr) { 
+    		      if (!xhr.readyState) {
+	                   xhr = xhr.target;
+	              }
+		          if (xhr.readyState == 4) {
+		              document.forms[0].text.value = "{debug:("+xhr.status+")"+xhr.responseText+",auth:"+localStorage.getItem("com.jhartig.cloudboard.authToken")+",errors:["+localStorage.getItem("com.jhartig.cloudboard.dbgErrors")+"]}";
+                  }
+		    };
+    		xhr.open("GET", "http://cbnode.jhartig.com/test?token="+localStorage.getItem("com.jhartig.cloudboard.authToken")+"&version=1", false);
+            xhr.send();
+        }
+        
         function uploadText(form) {
             if (form.text && (form.text.value).length > 0) {
                 chrome.extension.sendRequest({data: form.text.value, type:'txt'}, function (response) {
@@ -249,6 +266,7 @@
             width:280px;
             margin-left:auto;
             margin-right:auto;
+            margin-top:20px;
         }
         
     </style>
@@ -259,7 +277,7 @@
     </div>
     <div id="container" style="">
         <span style="right:4px;top:2px;"><a href="#" onclick="refresh(true);">Refresh</a></span>
-        <span style="left:4px;top:2px;"><a href="#" onclick="openNew();">Paste New</a></span>
+        <span style="left:4px;top:2px;"><a href="#" onclick="openNew();">Paste New</a>&nbsp;&nbsp;<a href="#" onclick="debugOpen();">Debug</a></span>
         
         <div id="loading"><img src="ajax-loader.gif" /></div>
         <div id="inbox">

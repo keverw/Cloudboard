@@ -112,12 +112,12 @@ function waitForUpdate(request, response, user, ip, lastTime) {
     
     try {
         request.connection.addListener('close', function () {
-            console.log("closed connection");
+            //console.log("closed connection");
             try { clearTimeout(timeout); } catch(e) {}
             users.refreshUserListeners();
         });
         request.connection.addListener('timeout', function () {
-            console.log("timed out connection");
+            //console.log("timed out connection");
             try { clearTimeout(timeout); } catch(e) {}
             response.end(true);
             users.refreshUserListeners(); //should be called in close but what the heck, why not        
@@ -577,6 +577,36 @@ var onUsersLoad = function () {
                     case "/listen":
                         waitForUpdate(request, response, user, ip, (urlParts.query && urlParts.query.lasttime ? parseInt(urlParts.query.lasttime) : false));
                     break
+                    case "/test":
+                        if (user) {
+                            try {
+                                if (users.getUser(user)) {
+                                    response.completeWrite(200, {
+                            			'Content-Type' : 'text/plain',
+                            			'Access-Control-Allow-Origin' : '*'
+                            		}, 'User Ok.', 'ascii');
+                                    return;
+                                } else {
+                                    response.completeWrite(200, {
+                            			'Content-Type' : 'text/plain',
+                            			'Access-Control-Allow-Origin' : '*'
+                            		}, 'User Fail.', 'ascii');
+                                    return;
+                                }
+                            } catch (e) {
+                                response.completeWrite(200, {
+                        			'Content-Type' : 'text/plain',
+                        			'Access-Control-Allow-Origin' : '*'
+                        		}, 'Exception:'+e, 'ascii');
+                                return;
+                            }
+                        } else {
+                            response.completeWrite(200, {
+                    			'Content-Type' : 'text/plain',
+                    			'Access-Control-Allow-Origin' : '*'
+                    		}, 'Ok.', 'ascii');
+                        }
+                        return;
                     case "/post":                        
                         var post = createPostFromClient(body, urlParts.query); //need to create post compatible as it if came from nginx
                         if (post) {

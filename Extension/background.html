@@ -66,7 +66,7 @@
                 if (response && response != "null" && response != "undefined" && response != "none" && response != "loading") {
                     sendDataToServer(response, "gsSong", function (response) {
                         if (!response) {
-                            chrome.tabs.executeScript(tab.id, {code: 'alert("Could not copy to Cloudboard. Try again in a few. If the problem persists, contact me: cloudboard@jhartig.com.");'});
+                            chrome.tabs.executeScript(tab.id, {code: 'alert("Could not copy to Cloudboard. Try again in a few. If the problem persists, click the Cloudboard icon located after the address bar, click Debug and send what you get to cloudboard@jhartig.com. Also, include what you are trying to paste.");'});
                         }
                     });
                 }
@@ -110,11 +110,12 @@
                 }
             } else if (resp == "invalid_token") {
                 localStorage.setItem("com.jhartig.cloudboard.authToken", resp);
-                openLink("options.html");
+                openLink("options.html");                
                 if (callback) {
                     callback(false);
                 }
             } else {
+                localStorage.setItem("com.jhartig.cloudboard.dbgErrors", localStorage.getItem("com.jhartig.cloudboard.dbgErrors")+",PERR:"+resp);
                 if (callback) {
                     callback(false);
                 }
@@ -241,6 +242,7 @@
             } else if (!aborted) {
                 errors++;
                 if (xhr.responseText) { console.error("received error: ", xhr.responseText); }
+                localStorage.setItem("com.jhartig.cloudboard.dbgErrors", localStorage.getItem("com.jhartig.cloudboard.dbgErrors")+",LERR:"+xhr.responseText);
                 clearTimeout(timeout);
                 if (xhr.responseText == "too_many_listens") { //shouldn't happen anymore
                     clearErrors();
@@ -470,7 +472,8 @@
     
     if (localStorage.getItem("com.jhartig.cloudboard.notifications") == null) {
         localStorage.setItem("com.jhartig.cloudboard.notifications", 1); //new users
-    }    
+    }
+    localStorage.setItem("com.jhartig.cloudboard.dbgErrors", ""); //clear errors
     openServerConnection();
     setInterval(checkIdleState, 5000);
     getInboxFromServerIfUpdated();

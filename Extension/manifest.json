@@ -1,6 +1,6 @@
 {
   "name": "Cloudboard",
-  "version": "0.6.7",
+  "version": "0.6.9",
   "description": "A real-time cloud clipboard. Share text, urls, pages, images, etc. between machines.",
   "icons": { "16": "icon16.png",
 			 "48": "icon48.png",

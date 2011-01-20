@@ -364,7 +364,7 @@ inboxes =
                                     try {
                                         users.getUser(user).lastUpdated = inbox[0].time;
                                     } catch (e) {
-                                        console.log("Could not load user: "+user+" last updates! because: "+e);
+                                        console.log("Could not load user: "+user+"! because: "+e);
                                     }
                                 }
                             }.bind(this));

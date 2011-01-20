@@ -20,7 +20,7 @@ users = {
         }
         
         //check if they send user id        
-        if (typeof user == "number" && user < this.maxUserID) {
+        if (typeof user == "number" && user <= this.maxUserID) {
             user = this.getUserFromID(user);
             if (!user) {
                 throw "invalid_user";
@@ -283,7 +283,7 @@ users = {
                     	}                        
                     }
                     if (remove) {
-                        console.log("removing: "+j+" connection");
+                        //console.log("removing: "+j+" connection");
                         try { clearTimeout(listens[j].timeout); } catch(e) {}
                         minusStreamForIP(listens[j].ip);
                 	    //listens.splice(j,1);
@@ -335,7 +335,7 @@ users = {
                         }
                     }
                     this.length += count;
-                    console.log("Added "+count+" new users."); //this.users.length is undefined?
+                    console.log("Added "+count+" new users. Last:"+this.maxUserID); //this.users.length is undefined?
                     this.lastUserCheck = (new Date()).getTime();
                 }
             } catch (e) {
