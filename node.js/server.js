@@ -73,10 +73,12 @@ function waitForUpdate(request, response, user, ip, lastTime) {
             case "new_id_required":
                 //if someone is making a lot of new ids, wtf
                 if (ip && accessedIPs[ip]) { accessedIPs[ip].newID++; }
+                var id = serverStartTime+'-'+nextClientId++;
                 response.completeWrite(201, {
         			'Content-Type' : 'text/plain',
         			'Access-Control-Allow-Origin' : '*'
-        		}, serverStartTime+'-'+nextClientId++, 'ascii');
+        		}, id, 'ascii');
+                console.log("New clientID: "+id);
                 return false;
             break
             case "invalid_id":
@@ -548,8 +550,6 @@ var onUsersLoad = function () {
                 }            
             }
             
-            if (!whitelisted) console.log("Connection from "+ip+" on "+request.url);
-            
             var process = function(e) {
                 
                 if (e) {
@@ -572,6 +572,7 @@ var onUsersLoad = function () {
                         getLastUpdatedForUser(request, response, user, ip);
                     break
                     case "/inbox":
+                        //if (!whitelisted) console.log("Inbox Request from user: "+user);
                         getInboxForUser(request, response, user, ip);
                     break
                     case "/listen":
@@ -610,6 +611,7 @@ var onUsersLoad = function () {
                     case "/post":                        
                         var post = createPostFromClient(body, urlParts.query); //need to create post compatible as it if came from nginx
                         if (post) {
+                            if (!whitelisted) console.log("Post from user: "+user+" with:"+post);
                             sendPostToUsers(request, response, user, post);
                         } else {
                             response.completeWrite(400, {
@@ -626,8 +628,10 @@ var onUsersLoad = function () {
                         return;
                     break
                     case "/checkuser":
+                        if (!whitelisted) console.log("Check user "+ip+" on user:"+user);
                         checkUserExists(request, response, user, ip);
                     case "/node-status":
+                        if (!whitelisted) console.log("Status connection from "+ip+" on "+request.url);
                         if (_secureStats && _statsPass) {
                             if (!(body && body == _statsPass) && !(urlParts.query && urlParts.query.pass == _statsPass)) {
                                 response.completeWrite(404, {
@@ -640,6 +644,7 @@ var onUsersLoad = function () {
                         sendServerStats(response, server.connections);
                     break
                     default:
+                        if (!whitelisted) console.log("Connection from "+ip+" on "+request.url);
                         accessedIPs[ip].notFound++;
                         response.completeWrite(404, {
                 			'Content-Type' : 'text/plain',
